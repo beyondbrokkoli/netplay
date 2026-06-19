@@ -130,3 +130,16 @@ typedef struct __attribute__((packed, aligned(64))) {
     uint8_t _pad_tail[8];
 } RollbackBuffer;
 
+#ifdef VX_ENABLE_VULKAN_STRUCTS
+        typedef struct {
+            VkDevice device; VkQueue queue; VkQueue transfer_queue; VkSwapchainKHR swapchain;
+            uint64_t swapchain_images[10]; uint64_t swapchain_views[10];
+            VkSemaphore image_available[10]; VkSemaphore render_finished[10];
+            VkFence in_flight[10]; void* vkWaitForFences; void* vkAcquireNextImageKHR;
+            void* vkResetFences; void* vkQueueSubmit; void* vkQueuePresentKHR;
+            void* pfnBegin; void* pfnEnd; void* pfnSetCullMode; void* pfnSetFrontFace;
+            void* pfnSetPrimitiveTopology; void* pfnSetDepthTestEnable;
+            void* pfnSetDepthWriteEnable; void* pfnSetDepthCompareOp;
+        } RenderThreadInit;
+    
+#endif // VX_ENABLE_VULKAN_STRUCTS

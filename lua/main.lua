@@ -4,45 +4,65 @@ package.path = "./lua/?.lua;" .. package.path
 local ffi = require("ffi")
 local bit = require("bit")
 local structs = require("structs")
+local math = require("math")
+local vmath = require("vmath")
+local seq = require("sequence")
+
+-- New Netcode Architecture
 local net = require("network")
 local cfg = require("config_engine")
-local cfg_net = require("config_net") -- [!] ADDED: SSoT Registry
+local cfg_net = require("config_net")
 local FSM = require("fsm_core")
 local Pump = require("net_pump")
 local Game = require("game_state")
 
-local Engine = {}
-function Engine.SubmitCommand(ctx, opcode, flags, target_id, target_pos)
-    local c_idx = bit.band(ctx.sim_tick_count, cfg_net.RING_MASK)
-    local pending_frame = ctx.rollback_arena.frames[c_idx]
-    local cmds = pending_frame.commands[ctx.net_identity]
+-- Old Vulkan/Render Modules
+local json_util = require("json_util")
+local reg_vk = require("registry_vk")
+local manifest = require("pipeline_manifest")
+local arena_mgr = require("arena_manager")
+local render_queue = require("render_queue")
 
-    if cmds[0].opcode == 0 then
-        cmds[0].opcode = opcode; cmds[0].flags = flags
-        cmds[0].target_id = target_id; cmds[0].target_pos = target_pos
-    elseif cmds[1].opcode == 0 then
-        cmds[1].opcode = opcode; cmds[1].flags = flags
-        cmds[1].target_id = target_id; cmds[1].target_pos = target_pos
-    else
-        print("[WARNING] Engine Command Buffer saturated for tick " .. ctx.sim_tick_count)
-    end
-end
-
+-- ============================================================================
+-- FFI CDEF BOUNDARY (Preserved from old main.lua)
+-- ============================================================================
 ffi.cdef[[
+    void* vx_sys_get_surface();
+    void vx_sys_set_cmd(int cmd, int w, int h);
     void Sleep(uint32_t dwMilliseconds);
     int usleep(uint32_t usec);
+    int vx_core_is_running();
+    void vx_core_shutdown();
+    void vx_core_mark_finished();
     int QueryPerformanceCounter(int64_t *lpPerformanceCount);
     int QueryPerformanceFrequency(int64_t *lpFrequency);
     typedef struct { long tv_sec; long tv_nsec; } timespec;
     int clock_gettime(int clk_id, timespec *tp);
+    int vx_input_last_key();
+    uint32_t vx_input_wasd();
+    float vx_input_mouse_dx();
+    float vx_input_mouse_dy();
+    float vx_input_mouse_x();
+    float vx_input_mouse_y();
+    float vx_input_click_x();
+    float vx_input_click_y();
+    int vx_input_is_captured();
+    int vx_sys_resize_flag();
+    void vx_sys_window_size(int* w, int* h);
+    int vx_input_mouse_btn(int btn);
+    int vx_input_spacebar();
+    int vx_stream_acquire();
+    RenderPacket* vx_stream_packet(int idx);
+    void vx_stream_commit(int idx);
+    void vx_thread_kill();
+    typedef struct __attribute__((aligned(16))) { float x, y, z, w; } vec4_t;
 ]]
 
+-- ============================================================================
+-- SYSTEM HELPERS & RAYCAST (Preserved)
+-- ============================================================================
 local function sys_sleep(ms)
-    if jit.os == "Windows" then
-        ffi.C.Sleep(ms)
-    else
-        ffi.C.usleep(ms * 1000)
-    end
+    if jit.os == "Windows" then ffi.C.Sleep(ms) else ffi.C.usleep(ms * 1000) end
 end
 
 local get_time_hires
@@ -61,6 +81,64 @@ else
         local ts = ffi.new("timespec")
         ffi.C.clock_gettime(1, ts) -- CLOCK_MONOTONIC
         return tonumber(ts.tv_sec) + (tonumber(ts.tv_nsec) * 1e-9)
+    end
+end
+
+-- [Preserved matrix_raycast_terrain exactly as you wrote it]
+local temp_vec_near = ffi.new("vec4_t")
+local temp_vec_far = ffi.new("vec4_t")
+local MAX_TILE_HEIGHT = 120.0
+local RAY_CEILING = MAX_TILE_HEIGHT + 5.0
+local MAX_RAY_STEPS = 1000
+local function matrix_raycast_terrain(mouse_x, mouse_y, screen_w, screen_h, viewProj_inv, grid)
+    local nx = (mouse_x / screen_w) * 2.0 - 1.0
+    local ny = (mouse_y / screen_h) * 2.0 - 1.0
+    vmath.multiply_mat4_vec4(viewProj_inv, nx, ny, 0.0, 1.0, temp_vec_near)
+    vmath.multiply_mat4_vec4(viewProj_inv, nx, ny, 1.0, 1.0, temp_vec_far)
+    local near_w = 1.0 / temp_vec_near.w
+    local ox, oy, oz = temp_vec_near.x * near_w, temp_vec_near.y * near_w, temp_vec_near.z * near_w
+    local far_w = 1.0 / temp_vec_far.w
+    local fx, fy, fz = temp_vec_far.x * far_w, temp_vec_far.y * far_w, temp_vec_far.z * far_w
+    local dx, dy, dz = fx - ox, fy - oy, fz - oz
+    local inv_mag = 1.0 / math.sqrt(dx^2 + dy^2 + dz^2)
+    dx, dy, dz = dx * inv_mag, dy * inv_mag, dz * inv_mag
+    local t = 0.0
+    if dy < 0.0 then
+        local dist_to_ceiling = (RAY_CEILING - oy) / dy
+        if dist_to_ceiling > 0.0 then t = dist_to_ceiling end
+    end
+    for i = 1, MAX_RAY_STEPS do
+        local px = ox + dx * t
+        local py = oy + dy * t
+        local pz = oz + dz * t
+        local grid_x = math.floor((px + cfg.world.offset_x) / cfg.world.spacing + 0.5)
+        local grid_z = math.floor((pz + cfg.world.offset_z) / cfg.world.spacing + 0.5)
+        if grid_x >= 0 and grid_x < cfg.world.map_width and grid_z >= 0 and grid_z < cfg.world.map_height then
+            local idx = grid_z * cfg.world.map_width + grid_x
+            local stack_elevation = 0.0
+            for p = 0, 7 do stack_elevation = stack_elevation + grid.elevation[p][idx] end
+            if py <= stack_elevation + 0.1 then return idx end
+        end
+        t = t + (cfg.world.spacing * 0.1)
+    end
+    return -1
+end
+
+-- Engine Input Submission Bridge
+local Engine = {}
+function Engine.SubmitCommand(ctx, opcode, flags, target_id, target_pos)
+    local c_idx = bit.band(ctx.sim_tick_count, cfg_net.RING_MASK)
+    local pending_frame = ctx.rollback_arena.frames[c_idx]
+    local cmds = pending_frame.commands[ctx.net_identity]
+
+    if cmds[0].opcode == 0 then
+        cmds[0].opcode = opcode; cmds[0].flags = flags
+        cmds[0].target_id = target_id; cmds[0].target_pos = target_pos
+    elseif cmds[1].opcode == 0 then
+        cmds[1].opcode = opcode; cmds[1].flags = flags
+        cmds[1].target_id = target_id; cmds[1].target_pos = target_pos
+    else
+        print("[WARNING] Engine Command Buffer saturated for tick " .. ctx.sim_tick_count)
     end
 end
 
@@ -116,21 +194,6 @@ local function extract_true_64bit_token(json_string)
     end
     return val
 end
-
-local json = require("json_util")
-
-print("Enter Node ID (0-7) OR Preferred Local Port (e.g., 50000): ")
-io.write("> ")
-local user_input = tonumber(io.read("*l")) or 50000
-
-local local_port = user_input
-if local_port < 1000 then
-    local_port = 50000 + local_port
-end
-
-assert(net.Host(local_port), "FATAL: Failed to bind local socket port " .. local_port)
-local my_local_ip = get_local_ip()
-
 local function BootstrapNetworkTopology(local_port, my_local_ip)
     print(string.format("[STUN] Querying external NAT edges at %s:%d...", cfg_net.STUN_SERVER, cfg_net.STUN_PORT))
     local stun_ok, my_pub_ip, my_pub_port = net.StunPunch(cfg_net.STUN_SERVER, cfg_net.STUN_PORT)
@@ -283,18 +346,44 @@ local function BootstrapNetworkTopology(local_port, my_local_ip)
 
     return session_token, local_id, p2p_established, active_peers, status_data
 end
+-- THE UNIFIED BOOT SEQUENCE
+local function main()
+    -- 1. DETECT HEADLESS MODE
+    local is_headless = false
+    for _, v in ipairs(arg) do
+        if v == "--headless" or v == "--server" then is_headless = true end
+    end
 
--- Execute the encapsulation
-local session_token, local_id, p2p_established, active_peers, status_data = BootstrapNetworkTopology(local_port, my_local_ip)
+    print("========================================")
+    print(" WEAVER ENGINE: 8-PLAYER MULTIVERSE ")
+    print(" Mode: " .. (is_headless and "HEADLESS SERVER" or "VULKAN CLIENT"))
+    print("========================================")
 
-local real_time_remaining = status_data.start_time - status_data.server_time
+    -- 2. TERMINAL LOGIN & NETWORK TOPOLOGY
+    print("Enter Node ID (0-7) OR Preferred Local Port (e.g., 50000): ")
+    io.write("> ")
+    local user_input = tonumber(io.read("*l")) or 50000
 
-if real_time_remaining > 0 then
-    print(string.format("[SYSTEM] Topology Locked. Sleeping %.2f seconds for global sync...", real_time_remaining))
-    sys_sleep(real_time_remaining * 1000)
-end
+    local local_port = user_input
+    if local_port < 1000 then
+        local_port = 50000 + local_port
+    end
 
-local ctx = {
+    assert(net.Host(local_port), "FATAL: Failed to bind local socket port " .. local_port)
+    local my_local_ip = get_local_ip()
+
+    -- Execute your exact Bootstrap sequence
+    local session_token, local_id, p2p_established, active_peers, status_data = BootstrapNetworkTopology(local_port, my_local_ip)
+
+    -- 3. THE GLOBAL SYNC SLEEP (Your "Hanging Pawn" #1)
+    local real_time_remaining = status_data.start_time - status_data.server_time
+    if real_time_remaining > 0 then
+        print(string.format("[SYSTEM] Topology Locked. Sleeping %.2f seconds for global sync...", real_time_remaining))
+        sys_sleep(real_time_remaining * 1000)
+    end
+
+    -- 4. CONTEXT ALLOCATION
+    local ctx = {
         session_token = session_token,
         net_identity = local_id,
         sim_tick_count = 1,
@@ -309,93 +398,228 @@ local ctx = {
         -- Black Box allocations
         rts_grid = Game.InitState(session_token),
         rollback_arena = ffi.new("RollbackBuffer"),
-        snapshot_ring = ffi.new(string.format("%s[%d]", Game.GetStateName(), cfg_net.RING_SIZE))
+        snapshot_ring = ffi.new(string.format("%s[%d]", Game.GetStateName(), cfg_net.RING_SIZE)),
+
+        -- Extracted from old ctx for the Render loop
+        prev_mouse_left = 0,
+        total_time = 0.0,
     }
 
-local f0 = ctx.rollback_arena.frames[0]
-f0.tick = 0
-for p = 0, cfg_net.MAX_PLAYERS - 1 do
-    f0.commands[p][0].opcode = 0
-    f0.commands[p][1].opcode = 0
-end
-
-ctx.rollback_arena.head_tick = 0
-ctx.rollback_arena.confirmed_tick = 0
-
-for p = 0, cfg_net.MAX_PLAYERS - 1 do
-    -- Dynamically set active state based on the STUN/Matchmaker phase
-    if active_peers[p] then
-        ctx.peer_active[p] = true
-    else
-        ctx.peer_active[p] = false
-    end
-end
-
-ffi.copy(ctx.snapshot_ring[0], ctx.rts_grid, Game.GetStateSize())
-f0.state_checksum = Game.HashState(ctx.rts_grid)
-
-local FIXED_DT = 1.0 / cfg_net.TICK_RATE
-local last_time = get_time_hires()
-local next_debug_print = last_time + 1.0
-
-print("[SYSTEM] Drop-in complete. Entering pristine FSM loop.")
-
-while true do
-    current_time = get_time_hires()
-    local frame_time = math.max(0.001, math.min(current_time - last_time, 0.25))
-    last_time = current_time
-
-    Pump.intercept_network(ctx, ctx.sim_tick_count)
-
-    local c_idx = bit.band(ctx.sim_tick_count, cfg_net.RING_MASK)
-    local pending_frame = ctx.rollback_arena.frames[c_idx]
-
-    if pending_frame.tick ~= ctx.sim_tick_count then
-        pending_frame.tick = ctx.sim_tick_count
-        for p = 0, cfg_net.MAX_PLAYERS - 1 do
-            pending_frame.commands[p][0].opcode = 0
-            pending_frame.commands[p][1].opcode = 0
-        end
-        pending_frame.state_checksum = 0
-        pending_frame.remote_checksum = 0
-        pending_frame.state = 0
-        pending_frame.remote_peer_id = 0
+    -- 5. PRISTINE FRAME 0 INITIALIZATION (Your "Hanging Pawn" #2)
+    local f0 = ctx.rollback_arena.frames[0]
+    f0.tick = 0
+    for p = 0, cfg_net.MAX_PLAYERS - 1 do
+        f0.commands[p][0].opcode = 0
+        f0.commands[p][1].opcode = 0
     end
 
-    if ctx.sim_tick_count % 120 == (ctx.net_identity * 10) then
-        if ctx.last_bot_tick ~= ctx.sim_tick_count then
-            Engine.SubmitCommand(ctx, 1, 0, 0, math.random(0, ctx.total_tiles - 1))
-            ctx.last_bot_tick = ctx.sim_tick_count
+    ctx.rollback_arena.head_tick = 0
+    ctx.rollback_arena.confirmed_tick = 0
+
+    for p = 0, cfg_net.MAX_PLAYERS - 1 do
+        -- Dynamically set active state based on the STUN/Matchmaker phase
+        if active_peers[p] then
+            ctx.peer_active[p] = true
+        else
+            ctx.peer_active[p] = false
         end
     end
 
-    ctx.accumulator = ctx.accumulator + frame_time
-    FSM.tick_playing_state(ctx, FIXED_DT)
+    -- The crucial initial snapshot and hash!
+    ffi.copy(ctx.snapshot_ring[0], ctx.rts_grid, Game.GetStateSize())
+    f0.state_checksum = Game.HashState(ctx.rts_grid)
 
-    Pump.send_dynamic_history(ctx)
+    -- 6. BOOTSTRAP VULKAN (If Client)
+    local vram_template, render_queues, pc, cam, inv_vp, master_ptr, memory, active_render_mode
+    if not is_headless then
+        print("[LUA IO] Instructing C-Core to Boot GLFW Window...")
+        ffi.C.vx_sys_set_cmd(1, 1280, 720) -- CMD_BOOT_WINDOW
 
-    if current_time >= next_debug_print then
-        local display_idx = bit.band(ctx.sim_tick_count - 1, cfg_net.RING_MASK)
-        local display_checksum = ctx.rollback_arena.frames[display_idx].state_checksum or 0
-        local missing_frames = ctx.sim_tick_count - ctx.rollback_arena.confirmed_tick
+        -- Start Weaver Coroutine to sync with C-Core surface
+        local co = coroutine.create(function()
+            local weaver_ctx = {}
+            for i, stage in ipairs(seq.boot) do
+                local signal = stage.action(weaver_ctx)
+                if signal == "AWAIT_SURFACE" then
+                    while ffi.C.vx_sys_get_surface() == nil do
+                        sys_sleep(10)
+                        coroutine.yield()
+                    end
+                end
+            end
+            return weaver_ctx
+        end)
 
-        local tracker_str = ""
-        for p = 0, cfg_net.MAX_PLAYERS - 1 do
-            if p ~= ctx.net_identity then
-                tracker_str = tracker_str .. string.format("P%d:%d ", p, ctx.peer_highest_tick[p])
+        local status, engine_ctx
+        while coroutine.status(co) ~= "dead" do
+            status, engine_ctx = coroutine.resume(co)
+            if not status then error("Fatal Weaver Crash: " .. tostring(engine_ctx)) end
+        end
+
+        ctx.vk_rt = engine_ctx.vk_runtime
+        ctx.sc_state = engine_ctx.sc_state
+        ctx.desc_state = engine_ctx.desc_state
+        ctx.gfx_state = engine_ctx.gfx_state
+        ctx.sync_state = engine_ctx.sync_state
+
+        -- Direct Vulkan DMA memory orchestration
+        memory = require("memory")
+
+        -- Direct FFI VRAM queue allocation (Replaces arena_manager!)
+        render_queues = {}
+        for i = 0, 3 do
+            render_queues[i] = ffi.new("DrawCommand[1024]")
+        end
+
+        -- Init GPU VRAM Template
+        vram_template = ffi.new("RtsTileInstance[?]", ctx.total_tiles)
+        for z = 0, cfg.world.map_height - 1 do
+            for x = 0, cfg.world.map_width - 1 do
+                local i = z * cfg.world.map_width + x
+                vram_template[i].px = (x * cfg.world.spacing) - cfg.world.offset_x
+                vram_template[i].pz = (z * cfg.world.spacing) - cfg.world.offset_z
             end
         end
 
-        print("[DIAGNOSTIC] Peer Ticks: " .. tracker_str)
-        print(string.format("[HEARTBEAT] SimTick: %d | NetHead: %d | Confirmed: %d | Missing: %d | StateHash: 0x%08X",
-            ctx.sim_tick_count,
-            ctx.rollback_arena.head_tick,
-            ctx.rollback_arena.confirmed_tick,
-            missing_frames,
-            display_checksum
-        ))
-
-        next_debug_print = current_time + 1.0
+        pc = ffi.new("PushConstants")
+        local camera_mod = require("camera")
+        cam = camera_mod.new()
+        inv_vp = ffi.new("mat4_t")
+        master_ptr = ffi.cast("float*", memory.Mapped["MASTER_GPU_BLOCK"])
+        active_render_mode = cfg.mode.dual
     end
-    sys_sleep(1)
+
+    -- 7. THE MAIN LOOP
+    local FIXED_DT = 1.0 / cfg_net.TICK_RATE
+    local last_time = get_time_hires()
+    local next_debug_print = last_time + 1.0
+
+    print("[SYSTEM] Drop-in complete. Entering Bifurcated FSM loop.")
+
+    while ffi.C.vx_core_is_running() == 1 do
+        local current_time = get_time_hires()
+        local frame_time = math.max(0.001, math.min(current_time - last_time, 0.25))
+        last_time = current_time
+
+        -- A. Ingest Network Packets
+        Pump.intercept_network(ctx, ctx.sim_tick_count)
+
+        ctx.accumulator = ctx.accumulator + frame_time
+
+        -- B. Consume Fixed Timesteps (Deterministic Logic)
+        while ctx.accumulator >= FIXED_DT do
+
+            -- [CLIENT] Capture Mouse clicks and translate to Network Opcodes
+            if not is_headless then
+                local mouse_left = ffi.C.vx_input_mouse_btn(0)
+                if mouse_left == 1 and ctx.prev_mouse_left == 0 then
+                    local click_x = ffi.C.vx_input_click_x()
+                    local click_y = ffi.C.vx_input_click_y()
+                    local clicked_idx = matrix_raycast_terrain(click_x, click_y, ctx.sc_state.extent.width, ctx.sc_state.extent.height, inv_vp, ctx.rts_grid)
+
+                    if clicked_idx ~= -1 then
+                        Engine.SubmitCommand(ctx, 1, 0, 0, clicked_idx)
+                    end
+                end
+                ctx.prev_mouse_left = mouse_left
+            end
+
+            -- Automated Bot Logic (from your Bleeding Edge code)
+            if ctx.sim_tick_count % 120 == (ctx.net_identity * 10) then
+                if ctx.last_bot_tick ~= ctx.sim_tick_count then
+                    Engine.SubmitCommand(ctx, 1, 0, 0, math.random(0, ctx.total_tiles - 1))
+                    ctx.last_bot_tick = ctx.sim_tick_count
+                end
+            end
+
+            -- Execute the core Rollback state machine
+            FSM.tick_playing_state(ctx, FIXED_DT)
+            Pump.send_dynamic_history(ctx)
+
+            -- Wipe the next frame in the Ring Buffer
+            ctx.sim_tick_count = ctx.sim_tick_count + 1
+            local n_idx = bit.band(ctx.sim_tick_count, cfg_net.RING_MASK)
+            local next_frame = ctx.rollback_arena.frames[n_idx]
+            next_frame.tick = ctx.sim_tick_count
+            for p = 0, cfg_net.MAX_PLAYERS - 1 do
+                next_frame.commands[p][0].opcode = 0
+                next_frame.commands[p][1].opcode = 0
+            end
+
+            ctx.accumulator = ctx.accumulator - FIXED_DT
+        end
+
+        -- C. Vulkan Render Dispatch (Only if Client!)
+        if not is_headless then
+            ctx.total_time = ctx.total_time + frame_time
+            pc.total_time = ctx.total_time
+
+            local mouse_x = ffi.C.vx_input_mouse_x()
+            local mouse_y = ffi.C.vx_input_mouse_y()
+
+            require("camera").update(cam, frame_time, mouse_x, mouse_y, ctx.sc_state.extent.width, ctx.sc_state.extent.height)
+            require("camera").get_matrices(cam, ctx.sc_state.extent.width, ctx.sc_state.extent.height, pc.viewProj, inv_vp)
+
+            -- Format data for the WSI
+            for i = 0, ctx.total_tiles - 1 do
+                local composite_terrain_id = 0
+                local stack_elevation = 0.0
+                for p = 0, 7 do
+                    local t_id = ctx.rts_grid.terrain[p][i]
+                    if t_id ~= 0 then
+                        composite_terrain_id = t_id
+                        stack_elevation = stack_elevation + ctx.rts_grid.elevation[p][i]
+                    end
+                end
+                vram_template[i].tile_data = bit.lshift(composite_terrain_id, 24)
+                vram_template[i].py = stack_elevation
+            end
+
+            -- Thread-safe FFI push to C-Core Ring Buffer
+            local write_idx = ffi.C.vx_stream_acquire()
+            if write_idx ~= -1 then
+                pc.dt = ctx.accumulator / FIXED_DT
+                render_queue.PackFrame(write_idx, pc, ctx.rts_grid, vram_template, render_queues, active_render_mode, master_ptr, memory, ctx.gfx_state, ctx.desc_state, ctx.sc_state, ctx.total_tiles, ctx.net_identity)
+                ffi.C.vx_stream_commit(write_idx)
+            end
+        end
+
+        -- D. Diagnostic Heartbeat
+        if current_time >= next_debug_print then
+            local display_idx = bit.band(ctx.sim_tick_count - 1, cfg_net.RING_MASK)
+            local display_checksum = ctx.rollback_arena.frames[display_idx].state_checksum or 0
+            local missing_frames = ctx.sim_tick_count - ctx.rollback_arena.confirmed_tick
+
+            local tracker_str = ""
+            for p = 0, cfg_net.MAX_PLAYERS - 1 do
+                if p ~= ctx.net_identity then
+                    tracker_str = tracker_str .. string.format("P%d:%d ", p, ctx.peer_highest_tick[p])
+                end
+            end
+
+            print(string.format("[HEARTBEAT] SimTick: %d | NetHead: %d | Missing: %d | Hash: 0x%08X",
+                ctx.sim_tick_count, ctx.rollback_arena.head_tick, missing_frames, display_checksum))
+            next_debug_print = current_time + 1.0
+        end
+
+        sys_sleep(1)
+    end
+
+    print("\n[LUA IO] Execution Terminated. Commencing Teardown...")
+    ffi.C.vx_thread_kill()
+    if not is_headless then
+        ctx.vk_rt.vk.vkDeviceWaitIdle(ctx.vk_rt.device)
+        require("graphics_pipeline").Destroy(ctx.vk_rt.vk, ctx.vk_rt, ctx.gfx_state)
+        require("descriptors").Destroy(ctx.vk_rt.vk, ctx.vk_rt.device, ctx.desc_state)
+        require("swapchain").Destroy(ctx.vk_rt.vk, ctx.vk_rt, ctx.sc_state)
+        require("renderer").Destroy(ctx.vk_rt.vk, ctx.vk_rt.device, ctx.sync_state, cfg.cfg.frame_slots)
+        memory.DestroyBuffer("MASTER_GPU_BLOCK", ctx.vk_rt)
+        memory.DestroyBuffer("MASTER_INDEX_BLOCK", ctx.vk_rt)
+        require("vulkan_core").Destroy(ctx.vk_rt)
+    end
+    net.Shutdown()
+    print("[LUA IO] Teardown Complete. Safe Exit.")
 end
+
+main()
+ffi.C.vx_core_mark_finished()

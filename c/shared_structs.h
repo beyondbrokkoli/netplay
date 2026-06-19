@@ -6,8 +6,77 @@
 #define FRAME_STATE_CONFIRMED 2
 #define FRAME_STATE_EMPTY 0
 #define FRAME_STATE_PREDICTED 1
+#define WORLD_MAP_HEIGHT 32
+#define WORLD_MAP_WIDTH 32
 
 // --- ENGINE MEMORY STRUCTURES ---
+typedef struct __attribute__((packed)) {
+    float m[16];
+} mat4_t;
+
+typedef struct __attribute__((packed)) {
+    float px;
+    float py;
+    float pz;
+    uint32_t tile_data;
+} RtsTileInstance;
+
+typedef struct __attribute__((packed)) {
+    mat4_t viewProj;
+    uint32_t aos_current_idx;
+    uint32_t aos_prev_idx;
+    float dt;
+    float total_time;
+    uint32_t target_state;
+    uint32_t hover_idx;
+    uint32_t flags;
+    uint8_t _pad_tail[4];
+} PushConstants;
+
+typedef struct __attribute__((packed, aligned(64))) {
+    uint16_t multiverse_terrain[8][262144];
+} MultiverseArena;
+
+typedef struct __attribute__((packed)) {
+    uint64_t pipeline_id;
+    uint64_t descriptor_set;
+    uint32_t index_count;
+    uint32_t instance_count;
+    uint32_t first_index;
+    int32_t vertex_offset;
+    uint32_t first_instance;
+    uint16_t pc_offset;
+    uint16_t pc_size;
+    uint8_t push_constants[128];
+    int16_t scissor_x;
+    int16_t scissor_y;
+    uint16_t scissor_w;
+    uint16_t scissor_h;
+    uint8_t cull_mode;
+    uint8_t depth_test;
+    uint8_t depth_write;
+    uint8_t depth_compare_op;
+    uint8_t front_face;
+    uint8_t topology;
+    uint8_t _pad_tail[2];
+} DrawCommand;
+
+typedef struct __attribute__((packed, aligned(64))) {
+    DrawCommand* draw_queue;
+    uint32_t draw_count;
+    uint8_t _pad_auto_0[4];
+    uint64_t gfx_layout;
+    uint64_t vertex_buffer;
+    uint64_t index_buffer;
+    uint64_t swapchain_image;
+    uint64_t swapchain_view;
+    uint64_t depth_image;
+    uint64_t depth_view;
+    uint32_t width;
+    uint32_t height;
+    uint8_t _pad_tail[48];
+} RenderPacket;
+
 #pragma pack(push, 1)
 typedef struct {
     uint8_t opcode;

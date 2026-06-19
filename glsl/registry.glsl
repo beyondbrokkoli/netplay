@@ -1,0 +1,59 @@
+// AUTO-GENERATED SSoT - DO NOT MODIFY
+#ifndef REGISTRY_GLSL
+#define REGISTRY_GLSL
+
+// --- CONSTANTS ---
+const uint WORLD_MAP_HEIGHT = 32U;
+const uint WORLD_MAP_WIDTH = 32U;
+
+// --- std430 SSBO DEFINITIONS ---
+struct mat4_t {
+    float m[16];
+};
+
+struct RtsTileInstance {
+    float px;
+    float py;
+    float pz;
+    uint tile_data;
+};
+
+struct PushConstants {
+    mat4 viewProj;
+    uint aos_current_idx;
+    uint aos_prev_idx;
+    float dt;
+    float total_time;
+    uint target_state;
+    uint hover_idx;
+    uint flags;
+    // Tail padded by 4 bytes
+};
+
+struct MultiverseArena {
+    uint multiverse_terrain[8][262144];
+};
+
+struct NetworkFrame {
+    uint tick;
+    uint state;
+    // Engine injected 3 pad bytes for std430
+    uint state_checksum;
+    uint remote_checksum;
+    uint remote_peer_id;
+    // Engine injected 7 pad bytes for std430
+    uint commands[2][2];
+};
+
+struct RollbackBuffer {
+    uint head_tick;
+    uint confirmed_tick;
+    uint is_rollback_active;
+    // Engine injected 3 pad bytes for std430
+    uint rollback_target;
+    // Engine injected 40 pad bytes for std430
+    uint frames[512];
+    // Tail padded by 8 bytes
+};
+
+#endif // REGISTRY_GLSL

@@ -345,12 +345,23 @@ local function BootstrapNetworkTopology(local_port, my_local_ip)
 
     return session_token, local_id, p2p_established, active_peers, status_data
 end
--- THE UNIFIED BOOT SEQUENCE
-local function main(arg)
-    -- 1. DETECT HEADLESS MODE
+
+local function main()
+    -- 1. PARSE CLI ARGUMENTS (Injected from C-Core)
     local is_headless = false
-    for _, v in ipairs(arg) do
-        if v == "--headless" or v == "--server" then is_headless = true end
+    local cli_port = nil
+
+    if arg then
+        for i, v in ipairs(arg) do
+            if v == "--headless" or v == "--server" then
+                is_headless = true
+            elseif v == "--port" or v == "-p" then
+                cli_port = tonumber(arg[i+1])
+            elseif tonumber(v) and not cli_port then
+                -- Catch standalone numbers as the port/node ID
+                cli_port = tonumber(v)
+            end
+        end
     end
 
     print("========================================")
@@ -359,9 +370,14 @@ local function main(arg)
     print("========================================")
 
     -- 2. TERMINAL LOGIN & NETWORK TOPOLOGY
-    print("Enter Node ID (0-7) OR Preferred Local Port (e.g., 50000): ")
-    io.write("> ")
-    local user_input = tonumber(io.read("*l")) or 50000
+    local user_input = cli_port
+
+    -- Only prompt if the user didn't provide a port/node in the CLI arguments
+    if not user_input then
+        print("Enter Node ID (0-7) OR Preferred Local Port (e.g., 50000): ")
+        io.write("> ")
+        user_input = tonumber(io.read("*l")) or 50000
+    end
 
     local local_port = user_input
     if local_port < 1000 then

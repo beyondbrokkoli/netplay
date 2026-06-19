@@ -1,0 +1,23 @@
+AzureAD+HalimOmarZaghdoudi@DESKTOP-BD3FFTI MINGW64 ~/netplay
+$ bin/boot.exe
+===========================================
+ WEAVER V2 HEADLESS BOOTLOADER
+===========================================
+[C-BOOT] Handing execution to lua/main.lua...
+
+
+[LUA FATAL ERROR] lua/main.lua:9: module 'sequence' not found:
+        no field package.preload['sequence']
+        no file './lua/sequence.lua'
+        no file './lua/sequence.lua'
+        no file '.\sequence.lua'
+        no file 'C:\msys64\home\HalimOmarZaghdoudi\netplay\bin\..\share\luajit-2.1\sequence.lua'
+        no file 'C:\msys64\home\HalimOmarZaghdoudi\netplay\bin\..\share\luajit-2.1\sequence\init.lua'
+        no file 'C:\msys64\home\HalimOmarZaghdoudi\netplay\bin\..\share\lua\5.1\sequence.lua'
+        no file 'C:\msys64\home\HalimOmarZaghdoudi\netplay\bin\..\share\lua\5.1\sequence\init.lua'
+        no file 'C:\msys64\home\HalimOmarZaghdoudi\netplay\bin\..\lib\lua\5.1\sequence.lua'
+        no file 'C:\msys64\home\HalimOmarZaghdoudi\netplay\bin\..\lib\lua\5.1\sequence\init.lua'
+        no file '.\sequence.dll'
+        no file 'C:\msys64\home\HalimOmarZaghdoudi\netplay\bin\..\lib\lua\5.1\sequence.dll'
+        no file 'C:\msys64\home\HalimOmarZaghdoudi\netplay\bin\..\lib\lua\5.1\loadall.dll'
+

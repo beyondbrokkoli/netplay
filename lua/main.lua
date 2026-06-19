@@ -20,12 +20,11 @@ local Game = require("game_state")
 local json_util = require("json_util")
 local reg_vk = require("registry_vk")
 local manifest = require("pipeline_manifest")
-local arena_mgr = require("arena_manager")
+
 local render_queue = require("render_queue")
 
--- ============================================================================
+
 -- FFI CDEF BOUNDARY (Preserved from old main.lua)
--- ============================================================================
 ffi.cdef[[
     void* vx_sys_get_surface();
     void vx_sys_set_cmd(int cmd, int w, int h);

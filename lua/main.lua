@@ -23,6 +23,7 @@ local manifest = require("pipeline_manifest")
 
 local render_queue = require("render_queue")
 
+local json = require("json_util")
 
 -- FFI CDEF BOUNDARY (Preserved from old main.lua)
 ffi.cdef[[

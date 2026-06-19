@@ -784,20 +784,39 @@ void vx_init_mailbox() {
     atomic_init(&g_engine.mailbox.mouse_captured, 0); // Start Free
 }
 
-THREAD_FUNC lua_co_overlord_loop(void* arg) {
+// --- NEW: Struct to pass arguments into the Lua Thread ---
+typedef struct {
+    int argc;
+    char** argv;
+} LuaBootArgs;
+
+THREAD_FUNC lua_co_overlord_loop(void* arg_ptr) {
+    LuaBootArgs* boot_args = (LuaBootArgs*)arg_ptr;
+    
     printf("[LUA-OS-THREAD] Booting Lua VM...\n");
     lua_State* L = luaL_newstate();
     luaL_openlibs(L);
-    if (luaL_dofile(L, "main.lua") != LUA_OK) {
+
+    // --- NEW: Construct the global 'arg' table for Lua ---
+    lua_newtable(L);
+    for (int i = 0; i < boot_args->argc; i++) {
+        lua_pushstring(L, boot_args->argv[i]);
+        lua_rawseti(L, -2, i); // arg[i] = argv[i]
+    }
+    lua_setglobal(L, "arg");
+
+    // [FIXED] Pointing to the correct directory
+    if (luaL_dofile(L, "lua/main.lua") != LUA_OK) {
         printf("\n[LUA FATAL ERROR] %s\n", lua_tostring(L, -1));
     }
+    
     lua_close(L);
     printf("[LUA-OS-THREAD] VM Destroyed.\n");
     return THREAD_RETURN_VAL;
 }
 
 int main(int argc, char** argv) {
-    printf("[C-CORE] Booting Headless Worker...\n");
+    printf("[C-CORE] Booting Weaver Engine Host...\n");
 
     if (!glfwInit()) return -1;
     vx_init_mailbox();
@@ -811,7 +830,9 @@ int main(int argc, char** argv) {
     atomic_init(&g_engine.mailbox.mouse_right, 0);
     atomic_init(&g_engine.mailbox.key_space, 0);
 
-    vmath_thread_t lua_thread = vmath_thread_start(lua_co_overlord_loop, NULL);
+    // --- NEW: Pass the arguments to the thread ---
+    LuaBootArgs boot_args = { argc, argv };
+    vmath_thread_t lua_thread = vmath_thread_start(lua_co_overlord_loop, &boot_args);
 
     GLFWwindow* window = NULL;
 
@@ -829,12 +850,11 @@ int main(int argc, char** argv) {
             window = glfwCreateWindow(w, h, "VX Engine Remote", NULL, NULL);
             glfwSetWindowSizeLimits(window, 640, 360, GLFW_DONT_CARE, GLFW_DONT_CARE);
 
-            // --- THE WINDOWS FOCUS OVERRIDE HACK ---
             glfwShowWindow(window);
-            glfwSetWindowAttrib(window, GLFW_FLOATING, GLFW_TRUE);  // Force OS to overlay it
-            glfwFocusWindow(window);                                // Grab the input lock
-            glfwSetWindowAttrib(window, GLFW_FLOATING, GLFW_FALSE); // Sink it back to normal
-            glfwPollEvents();                                       // Flush the OS event queue instantly
+            glfwSetWindowAttrib(window, GLFW_FLOATING, GLFW_TRUE);
+            glfwFocusWindow(window);
+            glfwSetWindowAttrib(window, GLFW_FLOATING, GLFW_FALSE);
+            glfwPollEvents();
 
             glfwSetFramebufferSizeCallback(window, glfw_framebuffer_size_callback);
             glfwSetKeyCallback(window, glfw_key_callback);

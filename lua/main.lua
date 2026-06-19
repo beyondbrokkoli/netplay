@@ -346,7 +346,7 @@ local function BootstrapNetworkTopology(local_port, my_local_ip)
     return session_token, local_id, p2p_established, active_peers, status_data
 end
 -- THE UNIFIED BOOT SEQUENCE
-local function main()
+local function main(arg)
     -- 1. DETECT HEADLESS MODE
     local is_headless = false
     for _, v in ipairs(arg) do

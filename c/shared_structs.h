@@ -5,7 +5,17 @@
 // --- ENGINE CONSTANTS ---
 #define MODE_DUAL 0
 #define MODE_GEOM 1
+#define MODE_POINT_CLOUD_PASS 88
 #define MODE_POINTS 2
+#define FRAME_STATE_CONFIRMED 2
+#define FRAME_STATE_EMPTY 0
+#define FRAME_STATE_PREDICTED 1
+#define WORLD_GRID_CELLS 262144
+#define WORLD_MAP_HEIGHT 256
+#define WORLD_MAP_WIDTH 256
+#define WORLD_OFFSET_X 2560
+#define WORLD_OFFSET_Z 2560
+#define WORLD_SPACING 20
 
 // --- ENGINE MEMORY STRUCTURES ---
 typedef struct __attribute__((packed)) {

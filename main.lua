@@ -441,29 +441,6 @@ local function main()
     local sync = engine_ctx.sync_state
     local memory = require("memory")
 
-    print("[LUA CO] Forging Data-Driven Pizza World Tilemap...")
-
-    local cx, cz = math.floor(cfg_sim.world.map_width  / 2), math.floor(cfg_sim.world.map_height  / 2)
-
-    for z = 0, cfg_sim.world.map_height - 1 do
-        for x = 0, cfg_sim.world.map_width  - 1 do
-            local idx = z * cfg_sim.world.map_width  + x
-            ctx.rts_grid.elevation[idx] = 0.0
-            ctx.rts_grid.terrain[idx] = 0 -- Grass Canvas
-        end
-    end
-
-    -- Paint the Crosshair
-    ctx.rts_grid.terrain[cz * cfg_sim.world.map_width  + cx] = 10 -- CENTER (White)
-    for x = cx + 1, cx + 5 do ctx.rts_grid.terrain[cz * cfg_sim.world.map_width  + x] = 11 end -- X-Axis (Red)
-    for z = cz + 1, cz + 5 do ctx.rts_grid.terrain[z * cfg_sim.world.map_width  + cx] = 12 end -- Z-Axis (Blue)
-
-    -- Paint the Bounding Box Corners
-    ctx.rts_grid.terrain[(cz - 5) * cfg_sim.world.map_width  + (cx - 5)] = 13 -- Top Left (Magenta)
-    ctx.rts_grid.terrain[(cz - 5) * cfg_sim.world.map_width  + (cx + 5)] = 13 -- Top Right (Magenta)
-    ctx.rts_grid.terrain[(cz + 5) * cfg_sim.world.map_width  + (cx - 5)] = 13 -- Bottom Left (Magenta)
-    ctx.rts_grid.terrain[(cz + 5) * cfg_sim.world.map_width  + (cx + 5)] = 13 -- Bottom Right (Magenta)
-
     print("[LUA CO] Initializing VRAM Index Buffer with Strict Topology...")
     local index_ptr = ffi.cast("uint32_t*", memory.Mapped["MASTER_INDEX_BLOCK"])
 

@@ -11,6 +11,7 @@ ffi.cdef[[
     void vx_net_set_relay_ip(const char* ip);
     uint32_t vx_net_hash_state(const void* data, size_t length, uint32_t initial_hash);
     int vx_net_stun_punch(const char* stun_server_ip, int stun_port, char* out_ip, int* out_port);
+    void vx_net_shutdown(void);
 ]]
 
 -- Dynamically load the binary depending on the host OS
@@ -59,6 +60,10 @@ end
 
 function Network.HashState(data_ptr, length, initial_hash)
     return net_lib.vx_net_hash_state(data_ptr, length, initial_hash)
+end
+
+function Network.Shutdown()
+    net_lib.vx_net_shutdown()
 end
 
 return Network

@@ -373,20 +373,11 @@ local function matrix_raycast_terrain(mouse_x, mouse_y, screen_w, screen_h, view
         end
         t = t + (cfg_sim.world.spacing * 0.1)
     end
-    return -1
+    return 65535
 end
 
 local function main()
-    -- 1. Boot Vulkan (The Observer)
-    print("[LUA IO] Booting Headless Weaver (LABORATORY)...")
-    local co = coroutine.create(boot_weaver)
-    local status, engine_ctx
-    while coroutine.status(co) ~= "dead" do
-        status, engine_ctx = coroutine.resume(co)
-        if not status then error("Fatal Weaver Crash: " .. tostring(engine_ctx)) end
-    end
-
-    -- 2. Bind Local Sockets (The Lost Snippet)
+    -- 1. Bind Sockets & Bootstrap Network FIRST
     print("Enter Node ID (0-7) OR Preferred Local Port (e.g., 50000): ")
     io.write("> ")
     local user_input = tonumber(io.read("*l")) or 50000
@@ -399,8 +390,37 @@ local function main()
     assert(net.Host(local_port), "FATAL: Failed to bind local socket port " .. local_port)
     local my_local_ip = get_local_ip()
 
-    -- 2. Bootstrap the 8-Player Network Topology (The Authority)
+    -- Lock the topology before touching the GPU
     local session_token, local_id, p2p_established, active_peers, status_data = BootstrapNetworkTopology(local_port, my_local_ip)
+
+    -- Initialize the Unified Game Context
+    local ctx = {
+        session_token = session_token,
+        net_identity = local_id,
+        sim_tick_count = 1, -- not deleting it here, correct?
+        accumulator = 0.0,
+        total_tiles = cfg_sim.world.map_width * cfg_sim.world.map_height,
+        p2p_established = p2p_established,
+        peer_active = ffi.new(string.format("bool[%d]", cfg_net.MAX_PLAYERS)),
+        peer_highest_tick = ffi.new(string.format("uint32_t[%d]", cfg_net.MAX_PLAYERS)),
+        peer_ack_of_me = ffi.new(string.format("uint32_t[%d]", cfg_net.MAX_PLAYERS)),
+        rts_grid = Game.InitState(session_token),
+        rollback_arena = ffi.new("RollbackBuffer"),
+        snapshot_ring = ffi.new(string.format("%s[%d]", Game.GetStateName(), cfg_net.RING_SIZE))
+    }
+
+    for p = 0, cfg_net.MAX_PLAYERS - 1 do
+        ctx.peer_active[p] = active_peers[p] and true or false
+    end
+
+    -- 2. Boot Vulkan (The Observer)
+    print("[LUA IO] Booting Headless Weaver (LABORATORY)...")
+    local co = coroutine.create(boot_weaver)
+    local status, engine_ctx
+    while coroutine.status(co) ~= "dead" do
+        status, engine_ctx = coroutine.resume(co)
+        if not status then error("Fatal Weaver Crash: " .. tostring(engine_ctx)) end
+    end
 
     -- 3. Initialize the Unified Game Context
     local ctx = {
@@ -486,10 +506,8 @@ local function main()
     local RESIZE_COOLDOWN = 0.25
 
     local last_time = get_time_hires()
-    local accumulator = 0.0
     local TICK_RATE = cfg_net.TICK_RATE
     local FIXED_DT = 1.0 / TICK_RATE
-    local sim_tick_count = 0
 
     print("[LUA CO] Packing Data-Driven Color Palette...")
     local staging_ptr = ffi.cast("float*", memory.Mapped["PALETTE_STAGING"])
@@ -519,7 +537,7 @@ local function main()
     }
 
     local prev_mouse_left = 0
-    local pending_click = -1
+    local pending_click = 65535
 
     -- [ATTACK VECTOR 1] PRE-COMPUTED VRAM TEMPLATE
     print("[LUA CO] Pre-computing Universal Geometry Template...")
@@ -617,8 +635,6 @@ local function main()
             local frame_time = math.max(0.001, math.min(current_time - last_time, 0.25))
             last_time = current_time
 
-            accumulator = accumulator + frame_time
-
             local mouse_left = ffi.C.vx_input_mouse_btn(0)
             local mouse_x = ffi.C.vx_input_mouse_x()
             local mouse_y = ffi.C.vx_input_mouse_y()
@@ -632,7 +648,7 @@ local function main()
                    inv_vp, ctx.rts_grid, ctx.net_identity
                 )
 
-                if clicked_idx ~= -1 then
+                if clicked_idx ~= 65535 then
                     -- Submit directly to the pure netcode command buffer!
                     EngineSubmitCommand(ctx, 1, 0, 0, clicked_idx)
                 end

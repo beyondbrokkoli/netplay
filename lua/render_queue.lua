@@ -1,5 +1,5 @@
 local ffi = require("ffi")
-local cfg = require("config_engine")
+local cfg = require("config_gfx")
 local manifest = require("pipeline_manifest")
 local bit = require("bit")
 
@@ -38,17 +38,18 @@ local function pack_pass(current_queue_ptr, pass_idx, pass_name, gfx, desc, tota
     return pass_idx + 1
 end
 
--- Add player_id to the very end of the function signature
-function RenderQueue.PackFrame(write_idx, pc, rts_grid, vram_template, render_queues, active_render_mode, master_ptr, memory, gfx, desc, sc, total_tiles, player_id)
+function RenderQueue.PackFrame(write_idx, pc, rts_grid, vram_template, render_queues, active_render_mode, master_ptr, memory, gfx, desc, sc, total_tiles)
     local FRAME_BYTES = total_tiles * ffi.sizeof("RtsTileInstance")
     local current_frame_offset = write_idx * FRAME_BYTES
     pc.aos_current_idx = current_frame_offset / 4
 
     local gpu_ptr = ffi.cast("RtsTileInstance*", master_ptr + (current_frame_offset / 4))
-
-    -- [FIX]: Copy the entire pre-collapsed 8D template to the GPU!
-    -- This is infinitely faster than a Lua loop and correctly renders all players.
-    ffi.copy(gpu_ptr, vram_template, FRAME_BYTES)
+    for i = 0, total_tiles - 1 do
+        gpu_ptr[i].px = vram_template[i].px
+        gpu_ptr[i].pz = vram_template[i].pz
+        gpu_ptr[i].py = rts_grid.elevation[i]
+        gpu_ptr[i].tile_data = bit.lshift(rts_grid.terrain[i], 24)
+    end
 
     local packet = ffi.C.vx_stream_packet(write_idx)
     local MAX_DRAW_COMMANDS = 1024

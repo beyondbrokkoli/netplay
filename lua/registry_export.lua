@@ -1,7 +1,7 @@
 -- lua/registry_export.lua
 local structs_mod = require("structs")
 local cfg = nil
-pcall(function() cfg = require("config_engine") end)
+pcall(function() cfg = require("config_gfx") end)
 
 local reg = nil
 pcall(function() reg = require("registry_vk") end)

@@ -1,7 +1,7 @@
 local ffi = require("ffi")
 local bit = require("bit")
 local reg = require("registry_vk")
-local config = require("config_engine")
+local config = require("config_gfx")
 local vk_desc, vk_struct, vk_shader = reg.vk_desc, reg.vk_struct, reg.vk_shader_stage
 
 local Descriptors = {}

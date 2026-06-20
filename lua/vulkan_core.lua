@@ -4,7 +4,7 @@ require("vulkan_headers")
 
 -- [NEW] Explicit Decoupled Imports
 local reg = require("registry_vk")
-local config = require("config_engine")
+local config = require("config_gfx")
 
 local cfg = config.cfg
 local vk_struct = reg.vk_struct

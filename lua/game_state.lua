@@ -1,7 +1,7 @@
 local ffi = require("ffi")
 local bit = require("bit")
 local net = require("network")
-local cfg = require("config_engine")
+local cfg = require("config_gfx")
 local cfg_net = require("config_net")
 local Fixed = require("fixed_math")
 

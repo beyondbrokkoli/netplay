@@ -18,11 +18,10 @@ function Camera.new()
 end
 
 function Camera.update(cam, frame_time, mouse_x, mouse_y, width, height)
+    local EDGE_THRESHOLD = 40.0
     local pan_x, pan_z = 0.0, 0.0
 
-    -- 1. Defensive Edge Panning (Guarded against nil injections)
-    if ffi.C.vx_input_is_captured() == 1 and type(mouse_x) == "number" and type(mouse_y) == "number" then
-        local EDGE_THRESHOLD = 40.0
+    if ffi.C.vx_input_is_captured() == 1 then
         if mouse_x < EDGE_THRESHOLD then pan_x = -1.0
         elseif mouse_x > width - EDGE_THRESHOLD then pan_x = 1.0 end
 
@@ -30,38 +29,19 @@ function Camera.update(cam, frame_time, mouse_x, mouse_y, width, height)
         elseif mouse_y > height - EDGE_THRESHOLD then pan_z = 1.0 end
     end
 
-    -- 2. Keyboard Panning (WASD Support for RTS standard handling)
-    local wasd = ffi.C.vx_input_wasd()
-    if bit.band(wasd, 1) ~= 0 then pan_z = pan_z - 1.0 end -- W
-    if bit.band(wasd, 2) ~= 0 then pan_z = pan_z + 1.0 end -- S
-    if bit.band(wasd, 4) ~= 0 then pan_x = pan_x - 1.0 end -- A
-    if bit.band(wasd, 8) ~= 0 then pan_x = pan_x + 1.0 end -- D
-
-    -- 3. Diagonal Normalization (Prevent 1.41x speed boost)
-    local pan_mag = math.sqrt(pan_x * pan_x + pan_z * pan_z)
-    if pan_mag > 0.0 then
-        pan_x = pan_x / pan_mag
-        pan_z = pan_z / pan_mag
-    end
-
-    -- 4. Zoom-Scaled Panning Speed
-    -- Normalizes speed so panning feels consistent at all altitudes
-    local zoom_factor = cam.ortho_zoom / 250.0 
-    local frame_speed = cam.move_speed * zoom_factor * frame_time
-
     local fwd_x = math.sin(cam.yaw)
     local fwd_z = math.cos(cam.yaw)
     local right_x = math.cos(cam.yaw)
     local right_z = -math.sin(cam.yaw)
 
-    -- Apply isolated viewport matrix transformations
+    local frame_speed = cam.move_speed * frame_time
     cam.pos.x = cam.pos.x + (right_x * pan_x + fwd_x * -pan_z) * frame_speed
     cam.pos.z = cam.pos.z + (right_z * pan_x + fwd_z * -pan_z) * frame_speed
 
-    -- 5. Q/E Zoom Logic
+    local wasd = ffi.C.vx_input_wasd()
     local zoom_dir = 0
-    if bit.band(wasd, 16) ~= 0 then zoom_dir = -1 end -- E
-    if bit.band(wasd, 32) ~= 0 then zoom_dir = 1 end  -- Q
+    if bit.band(wasd, 16) ~= 0 then zoom_dir = -1 end
+    if bit.band(wasd, 32) ~= 0 then zoom_dir = 1 end
 
     if zoom_dir ~= 0 then
         cam.ortho_zoom = cam.ortho_zoom * math.exp(zoom_dir * frame_time * 3.0)

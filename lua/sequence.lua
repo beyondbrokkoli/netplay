@@ -1,7 +1,6 @@
--- lua/sequence.lua
 local ffi = require("ffi")
-
-local cfg = require("config_engine")
+local cfg_gfx = require("config_gfx")
+local cfg_sim = require("config_sim") -- Only used to read grid dimensions
 local reg = require("registry_vk")
 local manifest = require("pipeline_manifest")
 
@@ -21,8 +20,8 @@ seq.boot = {
         name = "GLFW Window Boot",
         action = function(ctx)
             print("[WEAVER] Ordering C-Core to Boot GLFW Window...")
-            ffi.C.vx_sys_set_cmd(cfg.sys.boot, cfg.win.w, cfg.win.h)
-            return "AWAIT_SURFACE" -- Yields back to main.lua until the C-Core creates the window
+            ffi.C.vx_sys_set_cmd(cfg_gfx.sys.boot, cfg_gfx.win.w, cfg_gfx.win.h)
+            return "AWAIT_SURFACE"
         end
     },
     {
@@ -34,22 +33,29 @@ seq.boot = {
         end
     },
     {
+        -- THE DOMAIN B MANTRA: Explicit VRAM Allocation via memory.lua
         name = "Memory Arenas Allocation",
         action = function(ctx)
             local memory = require("memory")
-            local cfg_sim = require("config_sim") -- Only needed to know how big the grid is
-
+            print("[WEAVER] Booting DMA Engine & VRAM Allocator...")
+            
             memory.InitTransferSubsystem(ctx.vk_runtime)
 
-            -- EXPLICIT Domain B Memory Allocation. No arena_manager.lua.
-            local grid_bytes = cfg_sim.world.grid_cells * 16 -- sizeof(RtsTileInstance)
+            -- 1. Master GPU Block (Dynamic Grid)
+            local grid_bytes = cfg_sim.world.grid_cells * 16
             local gpu_bytes = math.floor(grid_bytes * 8 * 1.1) -- 8 Dimensions + Margin
-
             -- Usage: 32 (Transfer Src) | 128 (Storage) | 256 (Transfer Dst)
             memory.CreateHostVisibleBuffer("MASTER_GPU_BLOCK", "uint8_t", gpu_bytes, 416, ctx.vk_runtime)
 
+            -- 2. Master Index Block (6 indices per quad)
             -- Usage: 64 (Index Buffer) | 256 (Transfer Dst)
             memory.CreateHostVisibleBuffer("MASTER_INDEX_BLOCK", "uint32_t", cfg_sim.world.grid_cells * 6, 320, ctx.vk_runtime)
+
+            -- 3. Palette Color Pipeline
+            -- Usage: 1 (Transfer Src)
+            memory.CreateHostVisibleBuffer("PALETTE_STAGING", "float", 4096, 1, ctx.vk_runtime)
+            -- Usage: 128 (Storage) | 256 (Transfer Dst)
+            memory.CreateBufferHaven("PALETTE_HAVEN", 16384, 384, ctx.vk_runtime)
 
             print("[WEAVER] Strict VRAM Mapping Complete.")
         end
@@ -58,7 +64,7 @@ seq.boot = {
         name = "Swapchain Initialization",
         action = function(ctx)
             local swapchain = require("swapchain")
-            ctx.sc_state = swapchain.Init(ctx.vk_runtime.vk, ctx.vk_runtime, cfg.win.w, cfg.win.h, ctx.old_swapchain)
+            ctx.sc_state = swapchain.Init(ctx.vk_runtime.vk, ctx.vk_runtime, cfg_gfx.win.w, cfg_gfx.win.h, ctx.old_swapchain)
         end
     },
     {
@@ -66,7 +72,6 @@ seq.boot = {
         action = function(ctx)
             local descriptors = require("descriptors")
             local memory = require("memory")
-            -- Pulling the hardware pointers we just created in Step 4
             local master_gpu_buffer = memory.Buffers["MASTER_GPU_BLOCK"]
             local palette_haven_buffer = memory.Buffers["PALETTE_HAVEN"]
             ctx.desc_state = descriptors.Init(ctx.vk_runtime.vk, ctx.vk_runtime.device, master_gpu_buffer, palette_haven_buffer)
@@ -77,9 +82,7 @@ seq.boot = {
         action = function(ctx)
             local compute = require("compute_pipeline")
             local layout = ctx.desc_state.pipelineLayout
-            -- Wrap in pcall in case the compute shaders aren't moved over yet
-            local status, comp = pcall(compute.Init, ctx.vk_runtime.vk, ctx.vk_runtime.device, layout, manifest.compute)
-            if status then ctx.comp_state = comp end
+            ctx.comp_state = compute.Init(ctx.vk_runtime.vk, ctx.vk_runtime.device, layout, manifest.compute)
         end
     },
     {
@@ -89,7 +92,7 @@ seq.boot = {
             local layout = ctx.desc_state.pipelineLayout
             local colorFormat = ctx.sc_state.format
             ctx.gfx_state = graphics.Init(
-                ctx.vk_runtime.vk, ctx.vk_runtime, cfg.win.w, cfg.win.h,
+                ctx.vk_runtime.vk, ctx.vk_runtime, cfg_gfx.win.w, cfg_gfx.win.h,
                 layout, colorFormat, manifest.graphics
             )
         end
@@ -98,7 +101,7 @@ seq.boot = {
         name = "Renderer Synchronization",
         action = function(ctx)
             local renderer = require("renderer")
-            ctx.sync_state = renderer.InitSync(ctx.vk_runtime.vk, ctx.vk_runtime.device, cfg.cfg.frame_slots)
+            ctx.sync_state = renderer.InitSync(ctx.vk_runtime.vk, ctx.vk_runtime.device, cfg_gfx.vk.frame_slots)
         end
     },
     {
@@ -119,7 +122,7 @@ seq.boot = {
                 wsi.swapchain_views[i]  = ffi.cast("uint64_t", sc.imageViews[i])
             end
 
-            for i = 0, cfg.cfg.frame_slots - 1 do
+            for i = 0, cfg_gfx.vk.frame_slots - 1 do
                 wsi.image_available[i] = sync.imageAvailable[i]
                 wsi.render_finished[i] = sync.renderFinished[i]
                 wsi.in_flight[i]       = sync.inFlight[i]
@@ -143,7 +146,6 @@ seq.boot = {
                 void vx_stream_init(RenderThreadInit* wsi);
                 void vx_thread_start();
                 void vx_transfer_setup(uint32_t q_family_index);
-                int vx_transfer_request(uint64_t src, uint64_t dst, uint64_t size, uint64_t t_sem, uint64_t sig_val);
             ]]
 
             ffi.C.vx_transfer_setup(ctx.vk_runtime.tIndex)
@@ -154,7 +156,6 @@ seq.boot = {
     }
 }
 
--- Resize hook (bypassing the memory allocation steps, just refreshing graphics)
 seq.resize = { seq.boot[5], seq.boot[8], seq.boot[9] }
 
 return seq

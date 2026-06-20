@@ -148,6 +148,7 @@ seq.boot = {
                 void vx_stream_init(RenderThreadInit* wsi);
                 void vx_thread_start();
                 void vx_transfer_setup(uint32_t q_family_index);
+                int vx_transfer_request(uint64_t src, uint64_t dst, uint64_t size, uint64_t t_sem, uint64_t sig_val);
             ]]
 
             ffi.C.vx_transfer_setup(ctx.vk_runtime.tIndex)

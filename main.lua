@@ -501,14 +501,6 @@ local function main()
 
     print("[LUA CO] Entering Deterministic Rollback Render Loop...")
 
-    local rollback_arena = net.GetArena()
-    local bytes_per_layer = ctx.total_tiles * ffi.sizeof("uint16_t")
-
-    local snapshot_ring = {
-        terrain = ffi.new("uint16_t[128][" .. ctx.total_tiles .. "]"),
-        elevation = ffi.new("uint16_t[128][" .. ctx.total_tiles .. "]")
-    }
-
     local prev_mouse_left = 0
     local pending_click = 65535
 
@@ -523,9 +515,6 @@ local function main()
         end
     end
 
-    -- [NEW] Define the lock state, but DO NOT freeze the thread
-    local network_locked = false
-
     local gfx_pipeline_module = require("graphics_pipeline")
     local pump_deletion_queue = gfx_pipeline_module.PumpDeletionQueue
 
@@ -535,10 +524,6 @@ local function main()
     local last_time = get_time_hires()
 
     while ffi.C.vx_core_is_running() == 1 do
-
-        if _G.MatchmakerPoller and coroutine.status(_G.MatchmakerPoller) ~= "dead" then
-            coroutine.resume(_G.MatchmakerPoller)
-        end
 
         if ffi.C.vx_sys_resize_flag() == 1 then
             is_resizing = true

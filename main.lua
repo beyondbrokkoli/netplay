@@ -377,11 +377,16 @@ local function matrix_raycast_terrain(mouse_x, mouse_y, screen_w, screen_h, view
         if grid_x >= 0 and grid_x < cfg_sim.world.map_width and grid_z >= 0 and grid_z < cfg_sim.world.map_height then
             local idx = grid_z * cfg_sim.world.map_width + grid_x
 
-            -- [FIXED] 1. Read the strict integer from the player's 2D grid
-            local raw_elevation = grid.elevation[p][idx]
+            -- Reconstruct the exact composite height the GPU is rendering
+            local max_elevation = 0
+            for peer = 0, 7 do
+                local peer_elev = grid.elevation[peer][idx]
+                if peer_elev > max_elevation then
+                    max_elevation = peer_elev
+                end
+            end
 
-            -- [FIXED] 2. Decode to Float for the 3D ray collision math
-            local float_elevation = Fixed.to_float(raw_elevation)
+            local float_elevation = Fixed.to_float(max_elevation)
 
             if py <= float_elevation + 0.1 then return idx end
         end

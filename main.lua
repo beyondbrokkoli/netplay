@@ -446,7 +446,11 @@ local function main()
     })
     ffi.copy(index_ptr, iso_indices, 36 * 4)
 
-    local render_queues = arena_mgr.AllocateRenderQueues()
+    -- [DOMAIN B] Direct Render Queue Allocation
+    print("[LUA CO] Allocating Direct FFI Render Queues...")
+    local MAX_DRAW_COMMANDS = 1024
+    local render_queues = ffi.new("DrawCommand[?]", MAX_DRAW_COMMANDS * cfg_gfx.cfg.frame_slots)
+
     local frame_count = 0
     local vmath = require("vmath")
 

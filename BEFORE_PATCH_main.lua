@@ -373,11 +373,20 @@ local function matrix_raycast_terrain(mouse_x, mouse_y, screen_w, screen_h, view
         end
         t = t + (cfg_sim.world.spacing * 0.1)
     end
-    return 65535
+    return -1
 end
 
 local function main()
-    -- 1. Bind Sockets & Bootstrap Network FIRST
+    -- 1. Boot Vulkan (The Observer)
+    print("[LUA IO] Booting Headless Weaver (LABORATORY)...")
+    local co = coroutine.create(boot_weaver)
+    local status, engine_ctx
+    while coroutine.status(co) ~= "dead" do
+        status, engine_ctx = coroutine.resume(co)
+        if not status then error("Fatal Weaver Crash: " .. tostring(engine_ctx)) end
+    end
+
+    -- 2. Bind Local Sockets (The Lost Snippet)
     print("Enter Node ID (0-7) OR Preferred Local Port (e.g., 50000): ")
     io.write("> ")
     local user_input = tonumber(io.read("*l")) or 50000
@@ -390,14 +399,14 @@ local function main()
     assert(net.Host(local_port), "FATAL: Failed to bind local socket port " .. local_port)
     local my_local_ip = get_local_ip()
 
-    -- Lock the topology before touching the GPU
+    -- 2. Bootstrap the 8-Player Network Topology (The Authority)
     local session_token, local_id, p2p_established, active_peers, status_data = BootstrapNetworkTopology(local_port, my_local_ip)
 
-    -- Initialize the Unified Game Context
+    -- 3. Initialize the Unified Game Context
     local ctx = {
         session_token = session_token,
         net_identity = local_id,
-        sim_tick_count = 1, -- not deleting it here, correct?
+        sim_tick_count = 1,
         accumulator = 0.0,
         total_tiles = cfg_sim.world.map_width * cfg_sim.world.map_height,
         p2p_established = p2p_established,
@@ -477,8 +486,10 @@ local function main()
     local RESIZE_COOLDOWN = 0.25
 
     local last_time = get_time_hires()
+    local accumulator = 0.0
     local TICK_RATE = cfg_net.TICK_RATE
     local FIXED_DT = 1.0 / TICK_RATE
+    local sim_tick_count = 0
 
     print("[LUA CO] Packing Data-Driven Color Palette...")
     local staging_ptr = ffi.cast("float*", memory.Mapped["PALETTE_STAGING"])
@@ -508,7 +519,7 @@ local function main()
     }
 
     local prev_mouse_left = 0
-    local pending_click = 65535
+    local pending_click = -1
 
     -- [ATTACK VECTOR 1] PRE-COMPUTED VRAM TEMPLATE
     print("[LUA CO] Pre-computing Universal Geometry Template...")
@@ -523,6 +534,7 @@ local function main()
 
     -- [NEW] Define the lock state, but DO NOT freeze the thread
     local network_locked = false
+    sim_tick_count = 1
 
     local gfx_pipeline_module = require("graphics_pipeline")
     local pump_deletion_queue = gfx_pipeline_module.PumpDeletionQueue
@@ -531,6 +543,7 @@ local function main()
 
     -- We must initialize the clocks out here so the camera has a delta-time immediately
     local last_time = get_time_hires()
+    local accumulator = 0.0
 
     while ffi.C.vx_core_is_running() == 1 do
 
@@ -604,6 +617,8 @@ local function main()
             local frame_time = math.max(0.001, math.min(current_time - last_time, 0.25))
             last_time = current_time
 
+            accumulator = accumulator + frame_time
+
             local mouse_left = ffi.C.vx_input_mouse_btn(0)
             local mouse_x = ffi.C.vx_input_mouse_x()
             local mouse_y = ffi.C.vx_input_mouse_y()
@@ -617,7 +632,7 @@ local function main()
                    inv_vp, ctx.rts_grid, ctx.net_identity
                 )
 
-                if clicked_idx ~= 65535 then
+                if clicked_idx ~= -1 then
                     -- Submit directly to the pure netcode command buffer!
                     EngineSubmitCommand(ctx, 1, 0, 0, clicked_idx)
                 end
@@ -666,7 +681,7 @@ local function main()
 
             local write_idx = ffi.C.vx_stream_acquire()
             if write_idx ~= -1 then
-                local alpha = ctx.accumulator / FIXED_DT
+                local alpha = accumulator / FIXED_DT
                 pc.dt = alpha
 
                 render_queue.PackFrame(write_idx, pc, ctx.rts_grid, vram_template, render_queues, active_render_mode, master_ptr, memory, gfx, desc, sc, ctx.total_tiles, ctx.net_identity)

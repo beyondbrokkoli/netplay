@@ -290,10 +290,25 @@ local function BootstrapNetworkTopology(local_port, my_local_ip)
     return session_token, local_id, p2p_established, active_peers, status_data
 end
 
--- --- ENGINE & RENDER UTILS ---
 local function EngineSubmitCommand(ctx, opcode, flags, target_id, target_pos)
     local c_idx = bit.band(ctx.sim_tick_count, cfg_net.RING_MASK)
     local pending_frame = ctx.rollback_arena.frames[c_idx]
+
+    -- [FIXED] Pre-initialize the frame safely. If the unlocked render loop
+    -- injects an input before the FSM loop reaches this tick, we initialize it
+    -- here. When the FSM ticks, it will see the ticks match and preserve the input.
+    if pending_frame.tick ~= ctx.sim_tick_count then
+        pending_frame.tick = ctx.sim_tick_count
+        for p = 0, cfg_net.MAX_PLAYERS - 1 do
+            pending_frame.commands[p][0].opcode = 0
+            pending_frame.commands[p][1].opcode = 0
+        end
+        pending_frame.state_checksum = 0
+        pending_frame.remote_checksum = 0
+        pending_frame.state = 0
+        pending_frame.remote_peer_id = 0
+    end
+
     local cmds = pending_frame.commands[ctx.net_identity]
 
     if cmds[0].opcode == 0 then
@@ -399,6 +414,7 @@ local function main()
         net_identity = local_id,
         sim_tick_count = 1, -- not deleting it here, correct?
         accumulator = 0.0,
+        net_accumulator = 0.0,
         total_tiles = cfg_sim.world.map_width * cfg_sim.world.map_height,
         p2p_established = p2p_established,
         peer_active = ffi.new(string.format("bool[%d]", cfg_net.MAX_PLAYERS)),
@@ -479,6 +495,8 @@ local function main()
     local RESIZE_COOLDOWN = 0.25
 
     local last_time = get_time_hires()
+    local last_heartbeat = get_time_hires()
+
     local TICK_RATE = cfg_net.TICK_RATE
     local FIXED_DT = 1.0 / TICK_RATE
 
@@ -611,30 +629,39 @@ local function main()
             end
             prev_mouse_left = mouse_left
 
-            -- THE PURE TEMPORAL ENGINE
+            -- ==========================================
+            -- THE PURE TEMPORAL ENGINE PIPELINE
+            -- ==========================================
+
+            -- 1. Ingest Network Data for the current temporal window
             Pump.intercept_network(ctx, ctx.sim_tick_count)
 
-            local c_idx = bit.band(ctx.sim_tick_count, cfg_net.RING_MASK)
-            local pending_frame = ctx.rollback_arena.frames[c_idx]
+            -- [FIXED] The duplicate `if pending_frame.tick ~= ctx.sim_tick_count`
+            -- wiping block has been deleted from here.
 
-            -- Clean the upcoming frame
-            if pending_frame.tick ~= ctx.sim_tick_count then
-                pending_frame.tick = ctx.sim_tick_count
-                for p = 0, cfg_net.MAX_PLAYERS - 1 do
-                    pending_frame.commands[p][0].opcode = 0
-                    pending_frame.commands[p][1].opcode = 0
-                end
-                pending_frame.state_checksum = 0
-                pending_frame.remote_checksum = 0
-            end
-
+            -- 2. Advance the Temporal Accumulator
             ctx.accumulator = ctx.accumulator + frame_time
 
-            -- Execute the pure deterministic state machine
+            -- 3. Execute the Pure Deterministic State Machine
+            -- (The FSM internally handles the while loop and safe frame wiping)
             FSM.tick_playing_state(ctx, FIXED_DT)
 
-            -- Broadcast history to peers
+            -- 4. Broadcast the resulting dynamic history to peers
             Pump.send_dynamic_history(ctx)
+
+            -- 5. [RESTORED] Telemetry Heartbeat & Peer Diagnostics
+            if current_time - last_heartbeat >= 1.0 then
+                last_heartbeat = current_time
+                print(string.format("\n[HEARTBEAT] Sim Tick: %d | Confirmed: %d | Accum: %.4f",
+                    ctx.sim_tick_count, ctx.rollback_arena.confirmed_tick, ctx.accumulator))
+
+                for p = 0, cfg_net.MAX_PLAYERS - 1 do
+                    if ctx.peer_active[p] then
+                        print(string.format("  -> [DIAGNOSTIC] Peer %d | Highest Tick: %d | AckOfMe: %d",
+                            p, ctx.peer_highest_tick[p], ctx.peer_ack_of_me[p]))
+                    end
+                end
+            end
 
             local last_key = ffi.C.vx_input_last_key()
             if last_key == cfg_gfx.key.esc then ffi.C.vx_core_shutdown()

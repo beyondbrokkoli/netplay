@@ -294,9 +294,6 @@ local function EngineSubmitCommand(ctx, opcode, flags, target_id, target_pos)
     local c_idx = bit.band(ctx.sim_tick_count, cfg_net.RING_MASK)
     local pending_frame = ctx.rollback_arena.frames[c_idx]
 
-    -- [FIXED] Pre-initialize the frame safely. If the unlocked render loop
-    -- injects an input before the FSM loop reaches this tick, we initialize it
-    -- here. When the FSM ticks, it will see the ticks match and preserve the input.
     if pending_frame.tick ~= ctx.sim_tick_count then
         pending_frame.tick = ctx.sim_tick_count
         for p = 0, cfg_net.MAX_PLAYERS - 1 do
@@ -493,10 +490,6 @@ local function main()
     local is_resizing = false
     local last_resize_time = get_time_hires()
     local RESIZE_COOLDOWN = 0.25
-
-    local last_time = get_time_hires()
-    local last_heartbeat = get_time_hires()
-
     local TICK_RATE = cfg_net.TICK_RATE
     local FIXED_DT = 1.0 / TICK_RATE
 
@@ -540,6 +533,7 @@ local function main()
 
     -- We must initialize the clocks out here so the camera has a delta-time immediately
     local last_time = get_time_hires()
+    local last_heartbeat = get_time_hires()
 
     while ffi.C.vx_core_is_running() == 1 do
 
@@ -629,27 +623,19 @@ local function main()
             end
             prev_mouse_left = mouse_left
 
-            -- ==========================================
-            -- THE PURE TEMPORAL ENGINE PIPELINE
-            -- ==========================================
-
-            -- 1. Ingest Network Data for the current temporal window
+            -- THE PURE TEMPORAL ENGINE
             Pump.intercept_network(ctx, ctx.sim_tick_count)
 
-            -- [FIXED] The duplicate `if pending_frame.tick ~= ctx.sim_tick_count`
-            -- wiping block has been deleted from here.
-
-            -- 2. Advance the Temporal Accumulator
             ctx.accumulator = ctx.accumulator + frame_time
+            ctx.net_accumulator = ctx.net_accumulator + frame_time
 
-            -- 3. Execute the Pure Deterministic State Machine
-            -- (The FSM internally handles the while loop and safe frame wiping)
             FSM.tick_playing_state(ctx, FIXED_DT)
 
-            -- 4. Broadcast the resulting dynamic history to peers
-            Pump.send_dynamic_history(ctx)
+            if ctx.net_accumulator >= FIXED_DT then
+                Pump.send_dynamic_history(ctx)
+                ctx.net_accumulator = ctx.net_accumulator % FIXED_DT
+            end
 
-            -- 5. [RESTORED] Telemetry Heartbeat & Peer Diagnostics
             if current_time - last_heartbeat >= 1.0 then
                 last_heartbeat = current_time
                 print(string.format("\n[HEARTBEAT] Sim Tick: %d | Confirmed: %d | Accum: %.4f",

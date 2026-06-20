@@ -45,7 +45,7 @@ function RenderQueue.PackFrame(write_idx, pc, rts_grid, vram_template, render_qu
     pc.aos_current_idx = current_frame_offset / 4
 
     -- Default to 0 if running in a purely headless/bot scenario without an identity
-    local p = net_identity or 0
+    -- local p = net_identity or 0
 
     local gpu_ptr = ffi.cast("RtsTileInstance*", master_ptr + (current_frame_offset / 4))
     for i = 0, total_tiles - 1 do

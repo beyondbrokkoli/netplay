@@ -1,23 +1,27 @@
-AzureAD+HalimOmarZaghdoudi@DESKTOP-BD3FFTI MINGW64 ~/netplay
-$ bin/boot.exe
-===========================================
- WEAVER V2 HEADLESS BOOTLOADER
-===========================================
-[C-BOOT] Handing execution to lua/main.lua...
+
+[C-CORE] Async Transfer Overlord Online.
+[LUA CO] Allocating Direct FFI Render Queues...
+[LUA CO] Pre-computing Universal Geometry Template...
+[LUA CO] Packing Data-Driven Color Palette...
+[TRANSFER] Job dispatched: PALETTE_STAGING -> PALETTE_HAVEN (Target Timeline: 1)
+[NET] Scene loaded. Camera unlocked. Entering Networked 3-Phase Loop...
+
+[LUA FATAL ERROR] ./lua/net_pump.lua:117: attempt to index field 'net_state' (a nil value)
+[C-CORE] Submitting DMA Transfer. Timeline Signal Value: 1
+[LUA-OS-THREAD] VM Destroyed.
 
 
-[LUA FATAL ERROR] lua/main.lua:9: module 'sequence' not found:
-        no field package.preload['sequence']
-        no file './lua/sequence.lua'
-        no file './lua/sequence.lua'
-        no file '.\sequence.lua'
-        no file 'C:\msys64\home\HalimOmarZaghdoudi\netplay\bin\..\share\luajit-2.1\sequence.lua'
-        no file 'C:\msys64\home\HalimOmarZaghdoudi\netplay\bin\..\share\luajit-2.1\sequence\init.lua'
-        no file 'C:\msys64\home\HalimOmarZaghdoudi\netplay\bin\..\share\lua\5.1\sequence.lua'
-        no file 'C:\msys64\home\HalimOmarZaghdoudi\netplay\bin\..\share\lua\5.1\sequence\init.lua'
-        no file 'C:\msys64\home\HalimOmarZaghdoudi\netplay\bin\..\lib\lua\5.1\sequence.lua'
-        no file 'C:\msys64\home\HalimOmarZaghdoudi\netplay\bin\..\lib\lua\5.1\sequence\init.lua'
-        no file '.\sequence.dll'
-        no file 'C:\msys64\home\HalimOmarZaghdoudi\netplay\bin\..\lib\lua\5.1\sequence.dll'
-        no file 'C:\msys64\home\HalimOmarZaghdoudi\netplay\bin\..\lib\lua\5.1\loadall.dll'
 
+
+
+[C-CORE] Async Transfer Overlord Online.
+[C-CORE] Async Render Thread Online.
+[LUA CO] Allocating Direct FFI Render Queues...
+[LUA CO] Pre-computing Universal Geometry Template...
+[LUA CO] Packing Data-Driven Color Palette...
+[TRANSFER] Job dispatched: PALETTE_STAGING -> PALETTE_HAVEN (Target Timeline: 1)
+[NET] Scene loaded. Camera unlocked. Entering Networked 3-Phase Loop...
+[C-CORE] Submitting DMA Transfer. Timeline Signal Value: 1
+
+[LUA FATAL ERROR] main.lua:364: attempt to compare 'number' with 'int *'
+Segmentation fault         bin/boot.exe

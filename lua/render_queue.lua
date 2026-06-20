@@ -2,7 +2,7 @@ local ffi = require("ffi")
 local cfg = require("config_gfx")
 local manifest = require("pipeline_manifest")
 local bit = require("bit")
-
+local Fixed = require("fixed_math")
 local RenderQueue = {}
 
 -- Hoisted to the module level. Created ONCE. Zero allocations per frame.
@@ -38,17 +38,26 @@ local function pack_pass(current_queue_ptr, pass_idx, pass_name, gfx, desc, tota
     return pass_idx + 1
 end
 
-function RenderQueue.PackFrame(write_idx, pc, rts_grid, vram_template, render_queues, active_render_mode, master_ptr, memory, gfx, desc, sc, total_tiles)
+-- [UPDATED] Added `net_identity` to the signature to locate the player's 2D grid
+function RenderQueue.PackFrame(write_idx, pc, rts_grid, vram_template, render_queues, active_render_mode, master_ptr, memory, gfx, desc, sc, total_tiles, net_identity)
     local FRAME_BYTES = total_tiles * ffi.sizeof("RtsTileInstance")
     local current_frame_offset = write_idx * FRAME_BYTES
     pc.aos_current_idx = current_frame_offset / 4
 
+    -- Default to 0 if running in a purely headless/bot scenario without an identity
+    local p = net_identity or 0
+
     local gpu_ptr = ffi.cast("RtsTileInstance*", master_ptr + (current_frame_offset / 4))
     for i = 0, total_tiles - 1 do
+        -- 1. Read the raw deterministic integer from Domain A
+        local raw_elevation = rts_grid.elevation[p][i]
+        local terrain_id = rts_grid.terrain[p][i]
+
+        -- 2. Pack directly into the mapped VRAM slot (Decoding to Float)
         gpu_ptr[i].px = vram_template[i].px
         gpu_ptr[i].pz = vram_template[i].pz
-        gpu_ptr[i].py = rts_grid.elevation[i]
-        gpu_ptr[i].tile_data = bit.lshift(rts_grid.terrain[i], 24)
+        gpu_ptr[i].py = Fixed.to_float(raw_elevation)
+        gpu_ptr[i].tile_data = bit.lshift(terrain_id, 24)
     end
 
     local packet = ffi.C.vx_stream_packet(write_idx)

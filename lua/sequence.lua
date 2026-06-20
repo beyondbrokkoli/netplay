@@ -34,13 +34,24 @@ seq.boot = {
         end
     },
     {
-        -- THE PRAGMATIC FIX: Direct GPU Memory Orchestration
-        name = "GPU Memory Arenas",
+        name = "Memory Arenas Allocation",
         action = function(ctx)
             local memory = require("memory")
-            -- memory.lua reads config_engine.lua and maps the exact VRAM needed
-            memory.AllocateArenas(ctx.vk_runtime) 
-            print("[WEAVER] Vulkan DMA Memory Arenas Allocated.")
+            local cfg_sim = require("config_sim") -- Only needed to know how big the grid is
+
+            memory.InitTransferSubsystem(ctx.vk_runtime)
+
+            -- EXPLICIT Domain B Memory Allocation. No arena_manager.lua.
+            local grid_bytes = cfg_sim.world.grid_cells * 16 -- sizeof(RtsTileInstance)
+            local gpu_bytes = math.floor(grid_bytes * 8 * 1.1) -- 8 Dimensions + Margin
+
+            -- Usage: 32 (Transfer Src) | 128 (Storage) | 256 (Transfer Dst)
+            memory.CreateHostVisibleBuffer("MASTER_GPU_BLOCK", "uint8_t", gpu_bytes, 416, ctx.vk_runtime)
+
+            -- Usage: 64 (Index Buffer) | 256 (Transfer Dst)
+            memory.CreateHostVisibleBuffer("MASTER_INDEX_BLOCK", "uint32_t", cfg_sim.world.grid_cells * 6, 320, ctx.vk_runtime)
+
+            print("[WEAVER] Strict VRAM Mapping Complete.")
         end
     },
     {

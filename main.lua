@@ -16,7 +16,7 @@ local seq = require("sequence")
 local cfg = require("config_engine")
 local cfg_net = require("config_net")
 local manifest = require("pipeline_manifest")
-local arena_mgr = require("arena_manager")
+--local arena_mgr = require("arena_manager")
 local render_queue = require("render_queue")
 
 -- 3. NETCODE MODULES

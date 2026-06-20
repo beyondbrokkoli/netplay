@@ -5,13 +5,7 @@
 // --- CONSTANTS ---
 const uint MODE_DUAL = 0U;
 const uint MODE_GEOM = 1U;
-const uint MODE_POINT_CLOUD_PASS = 88U;
 const uint MODE_POINTS = 2U;
-const uint WORLD_MAP_HEIGHT = 256U;
-const uint WORLD_MAP_WIDTH = 256U;
-const uint WORLD_OFFSET_X = 2560U;
-const uint WORLD_OFFSET_Z = 2560U;
-const uint WORLD_SPACING = 20U;
 
 // --- std430 SSBO DEFINITIONS ---
 struct mat4_t {

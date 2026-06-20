@@ -38,7 +38,7 @@ seq.boot = {
         action = function(ctx)
             local memory = require("memory")
             print("[WEAVER] Booting DMA Engine & VRAM Allocator...")
-            
+
             memory.InitTransferSubsystem(ctx.vk_runtime)
 
             -- 1. Master GPU Block (Dynamic Grid)

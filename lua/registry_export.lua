@@ -1,7 +1,12 @@
 -- lua/registry_export.lua
 local structs_mod = require("structs")
-local cfg = nil
-pcall(function() cfg = require("config_gfx") end)
+
+-- Dual-source from the split domain configs
+local cfg_gfx = nil
+pcall(function() cfg_gfx = require("config_gfx") end)
+
+local cfg_sim = nil
+pcall(function() cfg_sim = require("config_sim") end)
 
 local reg = nil
 pcall(function() reg = require("registry_vk") end)
@@ -16,7 +21,7 @@ end
 local function map_glsl_type(type_str)
     if type_str == "float" then return "float" end
     if string.find(type_str, "mat4") then return "mat4" end
-    return "uint" -- Default primitive integer mapping
+    return "uint"
 end
 
 local function generate_ssot(glsl_path, c_header_path)
@@ -29,26 +34,29 @@ local function generate_ssot(glsl_path, c_header_path)
     c_hdr:write("// AUTO-GENERATED SSoT - DO NOT MODIFY\n")
     c_hdr:write("#pragma once\n#include <stdint.h>\n\n")
 
-    -- 2. CONSTANTS
-    if cfg then
-        glsl:write("// --- CONSTANTS ---\n")
-        c_hdr:write("// --- ENGINE CONSTANTS ---\n")
+    glsl:write("// --- CONSTANTS ---\n")
+    c_hdr:write("// --- ENGINE CONSTANTS ---\n")
 
-        if cfg.mode then
-            for _, k in ipairs(get_sorted_keys(cfg.mode)) do
-                glsl:write(string.format("const uint MODE_%s = %dU;\n", string.upper(k), cfg.mode[k]))
-                c_hdr:write(string.format("#define MODE_%s %d\n", string.upper(k), cfg.mode[k]))
+    -- 2A. EXPORT PRESENTATION MODES (From Domain B: Graphics)
+    if cfg_gfx and cfg_gfx.mode then
+        for _, k in ipairs(get_sorted_keys(cfg_gfx.mode)) do
+            glsl:write(string.format("const uint MODE_%s = %dU;\n", string.upper(k), cfg_gfx.mode[k]))
+            c_hdr:write(string.format("#define MODE_%s %d\n", string.upper(k), cfg_gfx.mode[k]))
+        end
+    end
+
+    -- 2B. EXPORT NETWORK SIMULATION STATES (From Domain A: Simulation)
+    if cfg_sim then
+        if cfg_sim.net_state then
+            for _, k in ipairs(get_sorted_keys(cfg_sim.net_state)) do
+                c_hdr:write(string.format("#define FRAME_STATE_%s %d\n", string.upper(k), cfg_sim.net_state[k]))
             end
         end
-        if cfg.net_state then
-            for _, k in ipairs(get_sorted_keys(cfg.net_state)) do
-                c_hdr:write(string.format("#define FRAME_STATE_%s %d\n", string.upper(k), cfg.net_state[k]))
-            end
-        end
 
-        if cfg.world then
-            for _, k in ipairs(get_sorted_keys(cfg.world)) do
-                local val = cfg.world[k]
+        -- 2C. EXPORT DIMENSIONAL MANIFESTO VALUES
+        if cfg_sim.world then
+            for _, k in ipairs(get_sorted_keys(cfg_sim.world)) do
+                local val = cfg_sim.world[k]
                 if type(val) == "number" then
                     if math.floor(val) == val then
                         glsl:write(string.format("const uint WORLD_%s = %dU;\n", string.upper(k), val))
@@ -60,8 +68,8 @@ local function generate_ssot(glsl_path, c_header_path)
                 end
             end
         end
-        c_hdr:write("\n")
     end
+    c_hdr:write("\n")
 
     -- 3. INTERLOCKING ALIGNMENT REGISTRY
     local dynamic_sizes = {
@@ -87,7 +95,6 @@ local function generate_ssot(glsl_path, c_header_path)
     for _, struct in ipairs(structs_mod.specs) do
         local is_glsl = not struct.c_only and not struct.wire_format
 
-        -- C-Side Declaration
         if struct.wire_format then
             c_hdr:write("#pragma pack(push, 1)\n")
             c_hdr:write(string.format("typedef struct {\n"))
@@ -96,7 +103,6 @@ local function generate_ssot(glsl_path, c_header_path)
             c_hdr:write(string.format("typedef struct %s {\n", attr))
         end
 
-        -- GLSL-Side Declaration
         if is_glsl then
             glsl:write(string.format("struct %s {\n", struct.name))
         end
@@ -107,7 +113,6 @@ local function generate_ssot(glsl_path, c_header_path)
         for _, m in ipairs(struct.members) do
             local m_size = resolve_member_size(m.type)
 
-            -- C-Side Padding for std140/std430 sync (Only if not a network wire format)
             if not struct.wire_format then
                 local rem = offset % m_size
                 if rem ~= 0 then
@@ -121,7 +126,6 @@ local function generate_ssot(glsl_path, c_header_path)
                 end
             end
 
-            -- Array Processing
             local arr_str = ""
             local element_count = 1
             if type(m.count) == "table" then
@@ -134,7 +138,6 @@ local function generate_ssot(glsl_path, c_header_path)
                 element_count = m.count
             end
 
-            -- Member Write
             c_hdr:write(string.format("    %s %s%s;\n", m.type, m.name, arr_str))
 
             if is_glsl then
@@ -149,7 +152,6 @@ local function generate_ssot(glsl_path, c_header_path)
             offset = offset + real_size
         end
 
-        -- Tail Processing
         if not struct.wire_format then
             local tail_rem = offset % struct.align
             if tail_rem ~= 0 then
@@ -184,7 +186,7 @@ local function generate_ssot(glsl_path, c_header_path)
     glsl:close()
     c_hdr:close()
 
-    print("[LUA SSOT] V2 Core & Network SSoT Generated (C & GLSL synced).")
+    print("[LUA SSOT] Dual-Domain Architecture SSoT Generated successfully.")
 end
 
 return { generate = generate_ssot }

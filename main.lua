@@ -13,10 +13,15 @@ local reg_vk  = require("registry_vk")
 local math = require("math")
 local vmath = require("vmath")
 local seq = require("sequence")
-local cfg = require("config_gfx")
-local cfg_net = require("config_net")
+
+
+-- STRICT DOMAIN ISOLATION REQUIRES:
+local cfg_gfx = require("config_gfx") -- Replaces cfg for win, sys, keys, mode
+local cfg_sim = require("config_sim") -- Replaces cfg for world size
+local cfg_net = require("config_net") -- Remains for networking constants
+
 local manifest = require("pipeline_manifest")
---local arena_mgr = require("arena_manager")
+
 local render_queue = require("render_queue")
 
 -- 3. NETCODE MODULES
@@ -389,7 +394,7 @@ local function main()
         net_identity = local_id,
         sim_tick_count = 1,
         accumulator = 0.0,
-        total_tiles = cfg.world.map_width * cfg.world.map_height,
+        total_tiles = cfg_sim.world.map_width * cfg_sim.world.map_height,
         p2p_established = p2p_established,
         peer_active = ffi.new(string.format("bool[%d]", cfg_net.MAX_PLAYERS)),
         peer_highest_tick = ffi.new(string.format("uint32_t[%d]", cfg_net.MAX_PLAYERS)),

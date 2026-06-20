@@ -476,7 +476,7 @@ local function main()
     local vram_template = ffi.new("RtsTileInstance[?]", ctx.total_tiles)
     for z = 0, cfg_sim.world.map_height - 1 do
         for x = 0, cfg_sim.world.map_width - 1 do
-            local i = z * cfg.world.map_width + x
+            local i = z * cfg_sim.world.map_width + x
             vram_template[i].px = (x * cfg_sim.world.spacing) - cfg_sim.world.offset_x
             vram_template[i].pz = (z * cfg_sim.world.spacing) - cfg_sim.world.offset_z
         end
@@ -487,10 +487,10 @@ local function main()
     staging_ptr[0] = 0.2; staging_ptr[1] = 0.8; staging_ptr[2] = 0.2; staging_ptr[3] = 1.0
     staging_ptr[4] = 0.2; staging_ptr[5] = 0.5; staging_ptr[6] = 1.0; staging_ptr[7] = 1.0
     staging_ptr[8] = 1.0; staging_ptr[9] = 0.2; staging_ptr[10] = 0.2; staging_ptr[11] = 1.0
-    staging_ptr[40] = 1.0; staging_ptr[41] = 1.0; staging_ptr[42] = 1.0; staging_ptr[43] = 1.0 
-    staging_ptr[44] = 1.0; staging_ptr[45] = 0.0; staging_ptr[46] = 0.0; staging_ptr[47] = 1.0 
-    staging_ptr[48] = 0.0; staging_ptr[49] = 0.0; staging_ptr[50] = 1.0; staging_ptr[51] = 1.0 
-    staging_ptr[52] = 1.0; staging_ptr[53] = 0.0; staging_ptr[54] = 1.0; staging_ptr[55] = 1.0 
+    staging_ptr[40] = 1.0; staging_ptr[41] = 1.0; staging_ptr[42] = 1.0; staging_ptr[43] = 1.0
+    staging_ptr[44] = 1.0; staging_ptr[45] = 0.0; staging_ptr[46] = 0.0; staging_ptr[47] = 1.0
+    staging_ptr[48] = 0.0; staging_ptr[49] = 0.0; staging_ptr[50] = 1.0; staging_ptr[51] = 1.0
+    staging_ptr[52] = 1.0; staging_ptr[53] = 0.0; staging_ptr[54] = 1.0; staging_ptr[55] = 1.0
 
     local palette_job_id = memory.TransferAsync("PALETTE_STAGING", "PALETTE_HAVEN", 16384)
     local palette_ready = false

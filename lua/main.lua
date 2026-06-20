@@ -4,6 +4,8 @@ package.path = "./lua/?.lua;" .. package.path
 local ffi = require("ffi")
 local bit = require("bit")
 local structs = require("structs")
+local vmath = require("vmath")
+local seq = require("sequence")
 
 -- [NEW] Pure Netcode SSoT Modules
 local net = require("network")

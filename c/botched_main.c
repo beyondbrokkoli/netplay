@@ -2,7 +2,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <string.h>
 #include <stdbool.h>
 #include <stdatomic.h>
 #include <stdalign.h>
@@ -785,55 +784,41 @@ void vx_init_mailbox() {
     atomic_init(&g_engine.mailbox.mouse_captured, 0); // Start Free
 }
 
-// --- THE DUAL-BOOT ROUTER ---
-THREAD_FUNC lua_co_overlord_loop(void* arg) {
-    // 1. Extract the is_headless flag passed from main()
-    int is_headless = (int)(intptr_t)arg;
+// --- NEW: Struct to pass arguments into the Lua Thread ---
+typedef struct {
+    int argc;
+    char** argv;
+} LuaBootArgs;
 
+THREAD_FUNC lua_co_overlord_loop(void* arg_ptr) {
+    LuaBootArgs* boot_args = (LuaBootArgs*)arg_ptr;
+    
     printf("[LUA-OS-THREAD] Booting Lua VM...\n");
     lua_State* L = luaL_newstate();
     luaL_openlibs(L);
 
-    // 2. Route to the correct Lua entry point based on the flag
-    int lua_status;
-    if (is_headless) {
-        printf("[LUA-OS-THREAD] Routing to Headless Node (lua/main-headless.lua)...\n");
-        lua_status = luaL_dofile(L, "lua/main-headless.lua");
-    } else {
-        printf("[LUA-OS-THREAD] Routing to Graphical Client (lua/main-client.lua)...\n");
-        lua_status = luaL_dofile(L, "lua/main-client.lua");
+    // --- NEW: Construct the global 'arg' table for Lua ---
+    lua_newtable(L);
+    for (int i = 0; i < boot_args->argc; i++) {
+        lua_pushstring(L, boot_args->argv[i]);
+        lua_rawseti(L, -2, i); // arg[i] = argv[i]
     }
+    lua_setglobal(L, "arg");
 
-    if (lua_status != LUA_OK) {
+    // [FIXED] Pointing to the correct directory
+    if (luaL_dofile(L, "lua/main.lua") != LUA_OK) {
         printf("\n[LUA FATAL ERROR] %s\n", lua_tostring(L, -1));
     }
+    
     lua_close(L);
     printf("[LUA-OS-THREAD] VM Destroyed.\n");
     return THREAD_RETURN_VAL;
 }
 
 int main(int argc, char** argv) {
-    // --- CLI ARGUMENT PARSER ---
-    int is_headless = 0;
-    for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--headless") == 0) {
-            is_headless = 1;
-            break;
-        }
-    }
+    printf("[C-CORE] Booting Weaver Engine Host...\n");
 
-    if (is_headless) {
-        printf("[C-CORE] Booting Headless Worker...\n");
-    } else {
-        printf("[C-CORE] Booting Graphical Client...\n");
-    }
-
-    // --- THE GLFW GUARD ---
-    // Prevents immediate crash on Linux VPS environments lacking an X11 display server
-    if (!is_headless) {
-        if (!glfwInit()) return -1;
-    }
-
+    if (!glfwInit()) return -1;
     vx_init_mailbox();
 
     atomic_init(&g_engine.mailbox.glfw_cmd, CMD_IDLE);
@@ -845,8 +830,9 @@ int main(int argc, char** argv) {
     atomic_init(&g_engine.mailbox.mouse_right, 0);
     atomic_init(&g_engine.mailbox.key_space, 0);
 
-    // 3. Pass the is_headless flag to the Lua thread via the void* argument
-    vmath_thread_t lua_thread = vmath_thread_start(lua_co_overlord_loop, (void*)(intptr_t)is_headless);
+    // --- NEW: Pass the arguments to the thread ---
+    LuaBootArgs boot_args = { argc, argv };
+    vmath_thread_t lua_thread = vmath_thread_start(lua_co_overlord_loop, &boot_args);
 
     GLFWwindow* window = NULL;
 
@@ -855,55 +841,50 @@ int main(int argc, char** argv) {
 
         int cmd = atomic_exchange_explicit(&g_engine.mailbox.glfw_cmd, CMD_IDLE, memory_order_acquire);
 
-        // --- WINDOW COMMANDS GUARD ---
-        // Completely bypasses window creation/destruction logic if running headless
-        if (!is_headless) {
-            if (cmd == CMD_BOOT_WINDOW && window == NULL) {
-                int w = atomic_load_explicit(&g_engine.mailbox.glfw_arg_w, memory_order_relaxed);
-                int h = atomic_load_explicit(&g_engine.mailbox.glfw_arg_h, memory_order_relaxed);
+        if (cmd == CMD_BOOT_WINDOW && window == NULL) {
+            int w = atomic_load_explicit(&g_engine.mailbox.glfw_arg_w, memory_order_relaxed);
+            int h = atomic_load_explicit(&g_engine.mailbox.glfw_arg_h, memory_order_relaxed);
 
-                glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-                glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
-                window = glfwCreateWindow(w, h, "VX Engine Remote", NULL, NULL);
-                glfwSetWindowSizeLimits(window, 640, 360, GLFW_DONT_CARE, GLFW_DONT_CARE);
+            glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+            glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
+            window = glfwCreateWindow(w, h, "VX Engine Remote", NULL, NULL);
+            glfwSetWindowSizeLimits(window, 640, 360, GLFW_DONT_CARE, GLFW_DONT_CARE);
 
-                // --- THE WINDOWS FOCUS OVERRIDE HACK ---
-                glfwShowWindow(window);
-                glfwSetWindowAttrib(window, GLFW_FLOATING, GLFW_TRUE);  // Force OS to overlay it
-                glfwFocusWindow(window);                                // Grab the input lock
-                glfwSetWindowAttrib(window, GLFW_FLOATING, GLFW_FALSE); // Sink it back to normal
-                glfwPollEvents();                                       // Flush the OS event queue instantly
+            glfwShowWindow(window);
+            glfwSetWindowAttrib(window, GLFW_FLOATING, GLFW_TRUE);
+            glfwFocusWindow(window);
+            glfwSetWindowAttrib(window, GLFW_FLOATING, GLFW_FALSE);
+            glfwPollEvents();
 
-                glfwSetFramebufferSizeCallback(window, glfw_framebuffer_size_callback);
-                glfwSetKeyCallback(window, glfw_key_callback);
-                glfwSetCursorPosCallback(window, glfw_cursor_callback);
-                glfwSetMouseButtonCallback(window, glfw_mouse_button_callback);
+            glfwSetFramebufferSizeCallback(window, glfw_framebuffer_size_callback);
+            glfwSetKeyCallback(window, glfw_key_callback);
+            glfwSetCursorPosCallback(window, glfw_cursor_callback);
+            glfwSetMouseButtonCallback(window, glfw_mouse_button_callback);
 
-                int fb_w, fb_h;
-                glfwGetFramebufferSize(window, &fb_w, &fb_h);
-                atomic_store_explicit(&g_engine.mailbox.win_w, fb_w, memory_order_release);
-                atomic_store_explicit(&g_engine.mailbox.win_h, fb_h, memory_order_release);
+            int fb_w, fb_h;
+            glfwGetFramebufferSize(window, &fb_w, &fb_h);
+            atomic_store_explicit(&g_engine.mailbox.win_w, fb_w, memory_order_release);
+            atomic_store_explicit(&g_engine.mailbox.win_h, fb_h, memory_order_release);
 
-                void* instance = atomic_load_explicit(&g_engine.mailbox.vk_instance, memory_order_acquire);
-                if (instance != NULL) {
-                    VkSurfaceKHR surface;
-                    if (glfwCreateWindowSurface((VkInstance)instance, window, NULL, &surface) == VK_SUCCESS) {
-                        atomic_store_explicit(&g_engine.mailbox.vk_surface, (void*)surface, memory_order_release);
-                        printf("[C-CORE] Window & Surface Created on Lua's Demand!\n");
-                    }
+            void* instance = atomic_load_explicit(&g_engine.mailbox.vk_instance, memory_order_acquire);
+            if (instance != NULL) {
+                VkSurfaceKHR surface;
+                if (glfwCreateWindowSurface((VkInstance)instance, window, NULL, &surface) == VK_SUCCESS) {
+                    atomic_store_explicit(&g_engine.mailbox.vk_surface, (void*)surface, memory_order_release);
+                    printf("[C-CORE] Window & Surface Created on Lua's Demand!\n");
                 }
             }
-            else if (cmd == CMD_KILL_WINDOW && window != NULL) {
-                glfwDestroyWindow(window);
-                window = NULL;
-                atomic_store_explicit(&g_engine.mailbox.vk_surface, NULL, memory_order_release);
-                printf("[C-CORE] Window Destroyed. Running Headless...\n");
-            }
+        }
+        else if (cmd == CMD_KILL_WINDOW && window != NULL) {
+            glfwDestroyWindow(window);
+            window = NULL;
+            atomic_store_explicit(&g_engine.mailbox.vk_surface, NULL, memory_order_release);
+            printf("[C-CORE] Window Destroyed. Running Headless...\n");
+        }
 
-            if (window && glfwWindowShouldClose(window)) {
-                atomic_store_explicit(&g_engine.mailbox.last_key_pressed, GLFW_KEY_ESCAPE, memory_order_release);
-                glfwSetWindowShouldClose(window, GLFW_FALSE);
-            }
+        if (window && glfwWindowShouldClose(window)) {
+            atomic_store_explicit(&g_engine.mailbox.last_key_pressed, GLFW_KEY_ESCAPE, memory_order_release);
+            glfwSetWindowShouldClose(window, GLFW_FALSE);
         }
         SLEEP_MS(1);
     }
@@ -914,13 +895,8 @@ int main(int argc, char** argv) {
     }
 
     vmath_thread_join(lua_thread);
-
-    // --- TEARDOWN GUARD ---
-    if (!is_headless) {
-        if (window) glfwDestroyWindow(window);
-        glfwTerminate();
-    }
-
+    if (window) glfwDestroyWindow(window);
+    glfwTerminate();
     printf("[C-CORE] Clean Exit.\n");
     return 0;
 }

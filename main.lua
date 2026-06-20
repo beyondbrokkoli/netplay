@@ -593,7 +593,7 @@ local function main()
             -- ==========================================
             ctx.accumulator = ctx.accumulator + frame_time
             while ctx.accumulator >= FIXED_DT do
-                
+
                 -- Prep the current frame in the rollback timeline
                 local c_idx = bit.band(ctx.sim_tick_count, cfg_net.RING_MASK)
                 local pending_frame = ctx.rollback_arena.frames[c_idx]
@@ -649,8 +649,11 @@ local function main()
                 local alpha = ctx.accumulator / FIXED_DT
                 pc.dt = alpha
 
-                render_queue.PackFrame(write_idx, pc, ctx.rts_grid, vram_template, render_queues, active_render_mode, master_ptr, memory, gfx, desc, sc, ctx.total_tiles)
-
+                render_queue.PackFrame(
+                    write_idx, pc, ctx.rts_grid, vram_template, render_queues,
+                    active_render_mode, master_ptr, memory, gfx, desc, sc,
+                    ctx.total_tiles, ctx.net_identity  -- <-- Added identity here
+                )
                 if wants_hotswap then
                     require("graphics_pipeline").HotReloadShaders(vk_rt.vk, vk_rt, gfx, frame_count)
                     wants_hotswap = false

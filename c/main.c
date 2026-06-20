@@ -785,40 +785,15 @@ void vx_init_mailbox() {
     atomic_init(&g_engine.mailbox.mouse_captured, 0); // Start Free
 }
 
-// --- THE ASYNC LUA OVERLORD THREAD ---
-typedef struct {
-    int argc;
-    char** argv;
-} LuaBootArgs;
-
-THREAD_FUNC lua_co_overlord_loop(void* arg_ptr) {
-    LuaBootArgs* args = (LuaBootArgs*)arg_ptr;
-
+// --- THE CONSENSUS LUA OVERLORD THREAD ---
+// Reverted to the original, pure, zero-overhead boot sequence.
+THREAD_FUNC lua_co_overlord_loop(void* arg) {
     printf("[LUA-OS-THREAD] Booting Lua VM...\n");
     lua_State* L = luaL_newstate();
     luaL_openlibs(L);
 
-    // 1. Pass CLI arguments globally to Lua via 'arg' table
-    lua_newtable(L);
-    for (int i = 0; i < args->argc; i++) {
-        lua_pushstring(L, args->argv[i]);
-        lua_rawseti(L, -2, i);
-    }
-    lua_setglobal(L, "arg");
-
-    // 2. Safely configure package.path to resolve Weaver modules
-    lua_getglobal(L, "package");
-    lua_getfield(L, -1, "path");
-    const char* current_path = lua_tostring(L, -1);
-    char new_path[2048];
-    snprintf(new_path, sizeof(new_path), "./lua/?.lua;%s", current_path);
-    lua_pushstring(L, new_path);
-    lua_setfield(L, -3, "path");
-    lua_pop(L, 2);
-
-    // 3. Execute the singular entry point
-    printf("[LUA-OS-THREAD] Handing execution to lua/main.lua...\n");
-    if (luaL_dofile(L, "lua/main.lua") != LUA_OK) {
+    // Engine executes the root main.lua - Lua handles its own package.paths
+    if (luaL_dofile(L, "main.lua") != LUA_OK) {
         printf("\n[LUA FATAL ERROR] %s\n", lua_tostring(L, -1));
     }
 
@@ -847,13 +822,13 @@ int main(int argc, char** argv) {
     atomic_init(&g_engine.mailbox.mouse_right, 0);
     atomic_init(&g_engine.mailbox.key_space, 0);
 
-    // Launch the Lua VM in a decoupled OS thread
-    LuaBootArgs boot_args = { argc, argv };
-    vmath_thread_t lua_thread = vmath_thread_start(lua_co_overlord_loop, &boot_args);
+    // Launch the Lua VM in a decoupled OS thread using the original safe NULL pattern
+    vmath_thread_t lua_thread = vmath_thread_start(lua_co_overlord_loop, NULL);
 
     GLFWwindow* window = NULL;
 
     // --- THE OS EVENT PUMP (MAIN THREAD) ---
+    // Preserves your original timing sequence perfectly.
     while (vx_core_is_running()) {
         if (window) glfwPollEvents();
 
@@ -868,12 +843,12 @@ int main(int argc, char** argv) {
             window = glfwCreateWindow(w, h, "Weaver Engine", NULL, NULL);
             glfwSetWindowSizeLimits(window, 640, 360, GLFW_DONT_CARE, GLFW_DONT_CARE);
 
-            // Force Focus Hacks
+            // --- THE WINDOWS FOCUS OVERRIDE HACK ---
             glfwShowWindow(window);
-            glfwSetWindowAttrib(window, GLFW_FLOATING, GLFW_TRUE);
-            glfwFocusWindow(window);
-            glfwSetWindowAttrib(window, GLFW_FLOATING, GLFW_FALSE);
-            glfwPollEvents();
+            glfwSetWindowAttrib(window, GLFW_FLOATING, GLFW_TRUE);  // Force OS to overlay it
+            glfwFocusWindow(window);                                // Grab the input lock
+            glfwSetWindowAttrib(window, GLFW_FLOATING, GLFW_FALSE); // Sink it back to normal
+            glfwPollEvents();                                       // Flush the OS event queue instantly
 
             glfwSetFramebufferSizeCallback(window, glfw_framebuffer_size_callback);
             glfwSetKeyCallback(window, glfw_key_callback);
@@ -905,10 +880,12 @@ int main(int argc, char** argv) {
             atomic_store_explicit(&g_engine.mailbox.last_key_pressed, GLFW_KEY_ESCAPE, memory_order_release);
             glfwSetWindowShouldClose(window, GLFW_FALSE);
         }
+
+        // Exact original sleep timing
         SLEEP_MS(1);
     }
 
-    printf("\n[C-CORE] Shutdown triggered. Waiting for Lua VM to unmount...\n");
+    printf("\n[C-CORE] Shutdown triggered. Waiting for Lua VM...\n");
     while (atomic_load_explicit(&g_engine.mailbox.lua_finished, memory_order_acquire) == 0) {
         SLEEP_MS(1);
     }

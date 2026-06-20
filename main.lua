@@ -28,6 +28,8 @@ local FSM = require("fsm_core")
 local Pump = require("net_pump")
 local Game = require("game_state")
 
+local Fixed = require("fixed_math")
+
 -- 4. C-CORE INTERFACES
 ffi.cdef[[
     void* vx_sys_get_surface();

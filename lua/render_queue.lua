@@ -44,20 +44,26 @@ function RenderQueue.PackFrame(write_idx, pc, rts_grid, vram_template, render_qu
     local current_frame_offset = write_idx * FRAME_BYTES
     pc.aos_current_idx = current_frame_offset / 4
 
-    -- Default to 0 if running in a purely headless/bot scenario without an identity
-    -- local p = net_identity or 0
-
     local gpu_ptr = ffi.cast("RtsTileInstance*", master_ptr + (current_frame_offset / 4))
-    for i = 0, total_tiles - 1 do
-        -- 1. Read the raw deterministic integer from Domain A
-        local raw_elevation = rts_grid.elevation[p][i]
-        local terrain_id = rts_grid.terrain[p][i]
 
-        -- 2. Pack directly into the mapped VRAM slot (Decoding to Float)
+    for i = 0, total_tiles - 1 do
+        local composite_elevation = 0
+        local active_terrain = 0
+
+        -- Fold all 8 player layers into a single visual tile
+        for peer = 0, 7 do
+            local peer_elevation = rts_grid.elevation[peer][i]
+            if peer_elevation > composite_elevation then
+                composite_elevation = peer_elevation
+                active_terrain = rts_grid.terrain[peer][i]
+            end
+        end
+
+        -- Pack the flattened composite directly into the mapped VRAM slot
         gpu_ptr[i].px = vram_template[i].px
         gpu_ptr[i].pz = vram_template[i].pz
-        gpu_ptr[i].py = Fixed.to_float(raw_elevation)
-        gpu_ptr[i].tile_data = bit.lshift(terrain_id, 24)
+        gpu_ptr[i].py = Fixed.to_float(composite_elevation)
+        gpu_ptr[i].tile_data = bit.lshift(active_terrain, 24)
     end
 
     local packet = ffi.C.vx_stream_packet(write_idx)

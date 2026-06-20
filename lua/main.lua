@@ -14,7 +14,7 @@ local Pump = require("net_pump")
 local Game = require("game_state")
 
 -- [OLD] Vulkan/Render Modules
-local json_util = require("json_util")
+local json = require("json_util")
 local reg_vk = require("registry_vk")
 local memory = require("memory")
 local camera_mod = require("camera")

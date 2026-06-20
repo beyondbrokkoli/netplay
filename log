@@ -1,6 +1,48 @@
-[TRANSFER] Job dispatched: PALETTE_STAGING -> PALETTE_HAVEN (Target Timeline: 1)
-[NET] Scene loaded. Camera unlocked. Entering Networked 3-Phase Loop...
-[C-CORE] Submitting DMA Transfer. Timeline Signal Value: 1
+AzureAD+HalimOmarZaghdoudi@DESKTOP-BD3FFTI MINGW64 ~/netplay
+$ bin/boot.exe
+[C-CORE] Booting Weaver Engine Host...
+[LUA-OS-THREAD] Booting Lua VM...
+[LUA IO] Booting Headless Weaver (LABORATORY)...
+[WEAVER] Executing Stage 1: Vulkan Instance
+[LUA] Initializing Vulkan Core (Instance Generation)...
+[LUA] Validation Layers DISABLED. Running raw.
+[WEAVER] Executing Stage 2: GLFW Window Boot
+[WEAVER] Ordering C-Core to Boot GLFW Window...
+[WEAVER] Yielding execution, waiting for C-Core Surface...
+[C-CORE] Window & Surface Created on Lua's Demand!
+[WEAVER] Executing Stage 3: Vulkan Logical Device
+[LUA] Resuming Vulkan Setup. Finalizing Logical Device...
+[LUA] No dedicated Transfer queue found. Sharing Graphics queue.
+[LUA] Logical Device Created!
+[WEAVER] Executing Stage 4: Memory Arenas Allocation
+[WEAVER] Booting DMA Engine & VRAM Allocator...
+[MEMORY] Timeline Semaphore forged for Async Transfers.
+[MEMORY] ReBAR Supported! Streaming directly to VRAM.
+[MEMORY] Allocated & Mapped VRAM Buffer: MASTER_GPU_BLOCK (35.20 MB)
+[MEMORY] ReBAR Supported! Streaming directly to VRAM.
+[MEMORY] Allocated & Mapped VRAM Buffer: MASTER_INDEX_BLOCK (6.00 MB)
+[MEMORY] ReBAR Supported! Streaming directly to VRAM.
+[MEMORY] Allocated & Mapped VRAM Buffer: PALETTE_STAGING (0.02 MB)
+[MEMORY] Forged GPU Buffer Haven: PALETTE_HAVEN (0.02 MB)
+[WEAVER] Strict VRAM Mapping Complete.
+[WEAVER] Executing Stage 5: Swapchain Initialization
+[SWAPCHAIN] Building the display chain...
+[SWAPCHAIN] Created successfully with 3 images!
+[WEAVER] Executing Stage 6: Descriptors Matrix
+[DESCRIPTORS] Wiring Master VRAM Arena & Palette Haven...
+[DESCRIPTORS] Unified Memory Matrix successfully bound!
+[WEAVER] Executing Stage 7: Compute Graph Pipelines
+[COMPUTE] Forging 0-Pass Compute Shaders...
+[WEAVER] Executing Stage 8: Graphics Pipelines & Depth Buffer
+[GRAPHICS] Building Reverse-Z Depth Buffer and Shader Modules...
+[WEAVER] Executing Stage 9: Renderer Synchronization
+[RENDERER] Forging Synchronization Primitives...
+[WEAVER] Executing Stage 10: Async Overlord Handoff
+[WEAVER] Packing C-Core Mailbox and firing Render Thread...
+[WEAVER] Engine Initialization Complete. Async Overlord is LIVE.
+Enter Node ID (0-7) OR Preferred Local Port (e.g., 50000):
+> [C-CORE] Async Render Thread Online.
+[C-CORE] Async Transfer Overlord Online.
 
-[LUA FATAL ERROR] main.lua:364: attempt to compare 'number' with 'int *'
-Segmentation fault         bin/boot.exe
+
+AzureAD+HalimOmarZaghdoudi@DESKTOP-BD3FFTI MINGW64 ~/netplay

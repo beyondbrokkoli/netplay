@@ -356,14 +356,14 @@ local function matrix_raycast_terrain(mouse_x, mouse_y, screen_w, screen_h, view
         local py = oy + dy * t
         local pz = oz + dz * t
 
-        local grid_x = math.floor((px + cfg.world.offset_x) / cfg.world.spacing + 0.5)
-        local grid_z = math.floor((pz + cfg.world.offset_z) / cfg.world.spacing + 0.5)
+        local grid_x = math.floor((px + cfg_sim.world.offset_x) / cfg_sim.world.spacing + 0.5)
+        local grid_z = math.floor((pz + cfg_sim.world.offset_z) / cfg_sim.world.spacing + 0.5)
 
-        if grid_x >= 0 and grid_x < cfg.world.map_width and grid_z >= 0 and grid_z < cfg.world.map_height then
-            local idx = grid_z * cfg.world.map_width + grid_x
+        if grid_x >= 0 and grid_x < cfg_sim.world.map_width and grid_z >= 0 and grid_z < cfg_sim.world.map_height then
+            local idx = grid_z * cfg_sim.world.map_width + grid_x
             if py <= grid.elevation[idx] + 0.1 then return idx end
         end
-        t = t + (cfg.world.spacing * 0.1)
+        t = t + (cfg_sim.world.spacing * 0.1)
     end
     return -1
 end
@@ -466,7 +466,7 @@ local function main()
     local wants_hotswap = false
 
     local master_ptr = ffi.cast("float*", memory.Mapped["MASTER_GPU_BLOCK"])
-    local active_render_mode = cfg.mode.dual
+    local active_render_mode = cfg_gfx.mode.dual
 
     local is_resizing = false
     local last_resize_time = get_time_hires()
@@ -474,11 +474,11 @@ local function main()
 
     print("[LUA CO] Pre-computing Universal Geometry Template...")
     local vram_template = ffi.new("RtsTileInstance[?]", ctx.total_tiles)
-    for z = 0, cfg.world.map_height - 1 do
-        for x = 0, cfg.world.map_width - 1 do
+    for z = 0, cfg_sim.world.map_height - 1 do
+        for x = 0, cfg_sim.world.map_width - 1 do
             local i = z * cfg.world.map_width + x
-            vram_template[i].px = (x * cfg.world.spacing) - cfg.world.offset_x
-            vram_template[i].pz = (z * cfg.world.spacing) - cfg.world.offset_z
+            vram_template[i].px = (x * cfg_sim.world.spacing) - cfg_sim.world.offset_x
+            vram_template[i].pz = (z * cfg_sim.world.spacing) - cfg_sim.world.offset_z
         end
     end
 
@@ -525,10 +525,10 @@ local function main()
                     vk_rt.vk.vkDeviceWaitIdle(vk_rt.device)
 
                     require("graphics_pipeline").Destroy(vk_rt.vk, vk_rt, gfx)
-                    require("renderer").Destroy(vk_rt.vk, vk_rt.device, sync, cfg.cfg.frame_slots)
+                    require("renderer").Destroy(vk_rt.vk, vk_rt.device, sync, cfg_gfx.cfg.frame_slots)
 
-                    cfg.win.w = new_w[0]
-                    cfg.win.h = new_h[0]
+                    cfg_gfx.win.w = new_w[0]
+                    cfg_gfx.win.h = new_h[0]
 
                     local mini_ctx = {
                         vk_runtime = vk_rt, desc_state = desc, old_swapchain = sc.handle
@@ -631,11 +631,11 @@ local function main()
             -- PHASE 3: ASYNC RENDER
             -- ==========================================
             local last_key = ffi.C.vx_input_last_key()
-            if last_key == cfg.key.esc then ffi.C.vx_core_shutdown()
-            elseif last_key == cfg.key.f5 then wants_hotswap = true
-            elseif last_key == cfg.key.num1 then active_render_mode = cfg.mode.dual
-            elseif last_key == cfg.key.num2 then active_render_mode = cfg.mode.geom
-            elseif last_key == cfg.key.num3 then active_render_mode = cfg.mode.points
+            if last_key == cfg_gfx.key.esc then ffi.C.vx_core_shutdown()
+            elseif last_key == cfg_gfx.key.f5 then wants_hotswap = true
+            elseif last_key == cfg_gfx.key.num1 then active_render_mode = cfg_gfx.mode.dual
+            elseif last_key == cfg_gfx.key.num2 then active_render_mode = cfg_gfx.mode.geom
+            elseif last_key == cfg_gfx.key.num3 then active_render_mode = cfg_gfx.mode.points
             end
 
             total_time = total_time + frame_time
@@ -675,7 +675,7 @@ local function main()
     require("compute_pipeline").Destroy(vk_rt.vk, vk_rt, engine_ctx.comp_state)
     require("descriptors").Destroy(vk_rt.vk, vk_rt.device, desc)
     require("swapchain").Destroy(vk_rt.vk, vk_rt, sc)
-    require("renderer").Destroy(vk_rt.vk, vk_rt.device, sync, cfg.cfg.frame_slots)
+    require("renderer").Destroy(vk_rt.vk, vk_rt.device, sync, cfg_gfx.cfg.frame_slots)
 
     memory.DestroyBuffer("MASTER_GPU_BLOCK", vk_rt)
     memory.DestroyBuffer("MASTER_INDEX_BLOCK", vk_rt)

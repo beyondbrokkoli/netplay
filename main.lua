@@ -624,8 +624,23 @@ local function main()
                 )
 
                 if clicked_idx ~= 65535 then
-                    -- Submit directly to the pure netcode command buffer!
-                    EngineSubmitCommand(ctx, 1, 0, 0, clicked_idx)
+                    -- 1. Read the composite reality to determine what the player actually sees
+                    local is_elevated = false
+                    for peer = 0, cfg_net.MAX_PLAYERS - 1 do
+                        if ctx.rts_grid.elevation[peer][clicked_idx] > 0 then
+                            is_elevated = true
+                            break
+                        end
+                    end
+
+                    -- 2. Toggle the Opcode based on the visual state
+                    if is_elevated then
+                        -- Submit Opcode 2 (e.g., Demolish / Lower)
+                        EngineSubmitCommand(ctx, 2, 0, 0, clicked_idx)
+                    else
+                        -- Submit Opcode 1 (e.g., Build / Raise)
+                        EngineSubmitCommand(ctx, 1, 0, 0, clicked_idx)
+                    end
                 end
             end
             prev_mouse_left = mouse_left

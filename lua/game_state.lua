@@ -29,7 +29,7 @@ function Game.InitState(session_token)
     state.rng_state[0] = bit.bxor(ptr[0], ptr[1])
     if state.rng_state[0] == 0 then state.rng_state[0] = 0x811C9DC5 end
 
-    -- 2. Initial World State Painting (Moved from main.lua)
+    -- 2. Initial World State Painting
     local cx = math.floor(cfg.world.map_width / 2)
     local cz = math.floor(cfg.world.map_height / 2)
     local w = cfg.world.map_width
@@ -55,15 +55,31 @@ function Game.SimulateTick(state, commands_array, tick)
     for p = 0, cfg_net.MAX_PLAYERS - 1 do
         for c = 0, 1 do
             local cmd = commands_array[p][c]
+
             if cmd.opcode == 1 then
+                -- ==========================================
+                -- OP 1: BUILD / RAISE
+                -- ==========================================
                 local idx = cmd.target_pos
                 if idx < total_tiles then
-                    if state.terrain[p][idx] == 0 then
-                        state.terrain[p][idx] = p + 10
-                        state.elevation[p][idx] = Fixed.from_float(15.0)
-                    else
-                        state.terrain[p][idx] = 0
-                        state.elevation[p][idx] = Fixed.from_float(0.0)
+                    -- Player 'p' builds in their own isolated layer.
+                    -- We assign 'p' as the terrain ID so it maps to their specific palette color.
+                    state.terrain[p][idx] = p
+                    state.elevation[p][idx] = Fixed.from_float(15.0)
+                end
+
+            elseif cmd.opcode == 2 then
+                -- ==========================================
+                -- OP 2: DEMOLISH / LOWER
+                -- ==========================================
+                local idx = cmd.target_pos
+                if idx < total_tiles then
+                    -- The Cross-Domain Wipe.
+                    -- To ensure the composite mesh flattens visually for the raycaster
+                    -- and the renderer, we must shatter the column for EVERY player at this index.
+                    for target_p = 0, cfg_net.MAX_PLAYERS - 1 do
+                        state.terrain[target_p][idx] = 0
+                        state.elevation[target_p][idx] = Fixed.from_float(0.0)
                     end
                 end
             end

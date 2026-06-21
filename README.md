@@ -7,17 +7,18 @@
 | **`F5`**  | 🔄 Hot-Reload | Rebuilds and applies shader pipelines instantly. |
 | **`1`** / **`2`** / **`3`** | 🎯 Render Modes | Toggles between Dual, Geometry, and Point rendering modes. |
 | **`ESC`** | 🛑 Teardown | Initiates a graceful, memory-safe engine shutdown. |
-ence
 
-The Weaver build pipeline is engineered for zero-friction development. By eliminating runtime bottlenecks and providing instant feedback loops, the user experience remains uninterrupted during both compilation and execution.
+## 📜 Acknowledgements & Licenses
 
-*   **⚡ Zero-Allocation 60Hz Loop:** The network and simulation loops perform strictly zero heap allocations. This entirely prevents LuaJIT garbage collection pauses, ensuring a buttery-smooth development and testing experience without micro-stutters.
-*   **🔄 Coroutine-Driven Boot Sequence:** The "Weaver" initialization pipeline utilizes non-blocking coroutines, allowing the C-Core surface to initialize asynchronously without stalling the main thread.
-*   **🔥 Zero-Downtime Hot-Reloading:** Press **`F5`** to instantly hot-swap graphics and compute shaders. The engine dynamically recompiles and rebinds pipelines on the fly, eliminating the need to restart the simulation during visual tuning.
-*   **📐 Dynamic "Mini-Weaver" Rebuilding:** Window resizing no longer requires a full context tear-down. The engine triggers an automated "Mini-Weaver" sequence that safely rebuilds the swapchain and render targets while preserving the active simulation state.
-*   **📦 Asynchronous VRAM Staging:** Memory transfers (such as palette and geometry uploads) are handled via non-blocking asynchronous queues, ensuring the render loop never stalls during asset loading.
+Weaver Engine is built upon the shoulders of giants. We extend our gratitude to the creators and maintainers of the following foundational technologies and open-source libraries:
 
----
+| Library / Technology | License | Role in Weaver |
+| :--- | :--- | :--- |
+| **🌋 [Vulkan](https://www.vulkan.org/)** | Apache 2.0 | Core rendering, compute pipeline, and memory management API. |
+| **🪟 [GLFW](https://www.glfw.org/)** | zlib/libpng | Cross-platform window creation, surface management, and input polling. |
+| **📦 [dkjson](http://dkolf.de/src/dkjson-lua.fsl/home)** | MIT | High-performance JSON serialization for matchmaker and network payloads. |
+
+*The Weaver Engine codebase itself is provided as-is for educational and development purposes.*
 
 ## 🛡️ Anti-Desync & Networking Architecture
 

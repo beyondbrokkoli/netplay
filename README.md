@@ -7,14 +7,7 @@
 | **`F5`**  | 🔄 Hot-Reload | Rebuilds and applies shader pipelines instantly. |
 | **`1`** / **`2`** / **`3`** | 🎯 Render Modes | Toggles between Dual, Geometry, and Point rendering modes. |
 | **`ESC`** | 🛑 Teardown | Initiates a graceful, memory-safe engine shutdown. |
-
----
-
-> **A deterministic, zero-allocation lockstep rollback netcode engine built on a C/LuaJIT FFI boundary.**
-
-Weaver is a high-performance, Vulkan-backed engine designed for uncompromising multiplayer parity, fluid developer iteration, and absolute simulation consistency.
-
-## 🛠️ Build System & Developer Experience
+ence
 
 The Weaver build pipeline is engineered for zero-friction development. By eliminating runtime bottlenecks and providing instant feedback loops, the user experience remains uninterrupted during both compilation and execution.
 

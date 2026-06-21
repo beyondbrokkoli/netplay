@@ -1,6 +1,2 @@
 *.log
 *.bin
-lua/vulkan_headers.lua
-c/shared_structs.h
-glsl/shared.glsl
-glsl/registry.glsl
